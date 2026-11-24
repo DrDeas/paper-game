@@ -1,0 +1,106 @@
+:root {
+  --font: ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif;
+  --glass: rgba(16, 19, 52, 0.62);
+  --line: rgba(255, 255, 255, 0.14);
+  --me: #ffc531;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden; background: #0b1030; color: #fff;
+  font-family: var(--font); -webkit-user-select: none; user-select: none; touch-action: none;
+}
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; padding: max(14px, env(safe-area-inset-top)) 14px 14px; }
+.progress { position: absolute; left: 14px; top: max(14px, env(safe-area-inset-top)); width: min(250px, 46vw); }
+.bar {
+  position: relative; height: 30px; border-radius: 15px; background: var(--glass);
+  border: 1px solid var(--line); overflow: hidden; backdrop-filter: blur(8px);
+}
+.fill { position: absolute; inset: 0 auto 0 0; width: 0; min-width: 12px; background: var(--me); border-radius: 15px; transition: width 0.35s cubic-bezier(.2,.9,.3,1.2); }
+.bestMark { position: absolute; top: 4px; bottom: 4px; width: 2px; background: rgba(255,255,255,.7); border-radius: 1px; }
+#pctText { position: absolute; right: 12px; top: 0; line-height: 29px; font-weight: 800; font-size: 15px; color: #fff; text-shadow: 0 1px 3px rgba(10,10,40,.9); }
+.best { margin: 5px 0 0 12px; font-size: 11px; letter-spacing: 0.12em; color: #aab4e8; }
+.best b { color: #fff; margin-left: 6px; letter-spacing: 0; font-size: 12px; }
+
+#board { position: absolute; right: 14px; top: max(14px, env(safe-area-inset-top)); margin: 0; padding: 0; list-style: none; width: min(210px, 44vw); }
+#board li {
+  display: flex; align-items: center; gap: 8px; height: 26px; margin-bottom: 5px; padding: 0 10px 0 6px;
+  border-radius: 13px; font-size: 13px; font-weight: 700; color: #14122e;
+}
+#board li i { font-style: normal; width: 16px; text-align: center; opacity: .65; }
+#board li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#board li.me { outline: 2px solid #fff; outline-offset: 1px; }
+
+#feed { position: absolute; left: 14px; bottom: 14px; font-size: 13px; color: #cdd4ff; display: flex; flex-direction: column; gap: 4px; }
+#feed div { background: var(--glass); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; animation: fade 4s forwards; width: fit-content; }
+#feed b { color: #fff; }
+@keyframes fade { 0% { opacity: 0; transform: translateY(6px); } 8%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+#toast {
+  position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 30px; font-weight: 800;
+  text-shadow: 0 3px 0 rgba(10, 10, 40, 0.5); opacity: 0; white-space: nowrap;
+}
+#toast.show { animation: toast 1.3s ease-out; }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 16px) scale(.8); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.08); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -22px); } }
+
+.zoomer { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
+.zoomer button {
+  width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line); background: var(--glass);
+  color: #fff; font: 700 22px var(--font); backdrop-filter: blur(8px); cursor: pointer;
+}
+
+.overlay {
+  position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(11, 16, 48, 0) 20%, rgba(11, 16, 48, 0.7) 100%);
+  transition: opacity 0.35s; overflow: auto;
+}
+.overlay.hide { opacity: 0; pointer-events: none; }
+.card {
+  width: min(430px, 100%); padding: 26px 26px 18px; border-radius: 30px; text-align: center;
+  background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(14px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+h1 { margin: 0; font-size: clamp(38px, 9vw, 52px); font-weight: 900; letter-spacing: -0.02em; line-height: 1; }
+h1 span { color: var(--me); }
+.tag { margin: 10px 0 18px; color: #c3cbf5; font-size: 14.5px; line-height: 1.45; }
+#name {
+  width: 100%; height: 48px; border-radius: 24px; border: 1px solid var(--line); background: rgba(255,255,255,.08);
+  color: #fff; font: 700 17px var(--font); text-align: center; outline: none; -webkit-user-select: text; user-select: text;
+}
+#name:focus { border-color: var(--me); }
+#name::placeholder { color: #8f98c9; font-weight: 600; }
+.chips { display: flex; gap: 8px; justify-content: center; margin: 12px 0; flex-wrap: wrap; }
+.chips button {
+  height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--line); background: transparent;
+  color: #c3cbf5; font: 700 13.5px var(--font); cursor: pointer;
+}
+.chips button.on { background: #fff; color: #171538; border-color: #fff; }
+button.primary {
+  width: 100%; height: 54px; border: 0; border-radius: 27px; background: var(--me); color: #1c1740;
+  font: 900 20px var(--font); cursor: pointer; box-shadow: 0 5px 0 #b98300; transition: transform .08s, box-shadow .08s;
+}
+button.primary:active { transform: translateY(4px); box-shadow: 0 1px 0 #b98300; }
+.xrRow { display: flex; gap: 10px; margin-top: 14px; }
+.xrRow button {
+  flex: 1; height: 46px; border-radius: 23px; border: 2px solid #21d4c5; background: rgba(33, 212, 197, 0.12);
+  color: #8ff5ea; font: 800 15.5px var(--font); cursor: pointer;
+}
+.hint { margin: 12px 0 0; font-size: 11.5px; line-height: 1.6; color: #8f98c9; }
+.hint b { color: #c3cbf5; }
+.hint:empty { display: none; }
+.resultTitle { font-size: 19px; font-weight: 800; margin-bottom: 10px; color: #ff9bb3; }
+.stats { display: flex; gap: 8px; margin-bottom: 16px; }
+.stats div { flex: 1; background: rgba(255,255,255,.07); border-radius: 16px; padding: 10px 4px; }
+.stats b { display: block; font-size: 22px; font-weight: 900; }
+.stats span { font-size: 11px; color: #aab4e8; letter-spacing: .04em; }
+[hidden] { display: none !important; }
+
+@media (min-aspect-ratio: 6/5) {
+  .overlay { justify-items: start; padding-left: max(16px, 7vw); background: linear-gradient(90deg, rgba(11,16,48,.75) 0%, rgba(11,16,48,0) 70%); }
+}
+@media (max-aspect-ratio: 5/6) {
+  .overlay { align-items: end; background: linear-gradient(0deg, rgba(11,16,48,.8) 0%, rgba(11,16,48,0) 75%); }
+  .card { padding: 20px 20px 12px; }
+  .tag { margin: 8px 0 12px; }
+}

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1030">
+<title>Lasso Planet</title>
+<meta name="description" content="Lasso land on tiny planets. A territory game for desktop, phones and VR headsets.">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud" hidden>
+  <div class="progress">
+    <div class="bar"><div class="fill" id="barFill"></div><div class="bestMark" id="bestMark"></div><span id="pctText">0.0%</span></div>
+    <div class="best">BEST <b id="bestText">0.0%</b></div>
+  </div>
+  <ol id="board"></ol>
+  <div id="feed"></div>
+  <div id="toast"></div>
+  <div class="zoomer">
+    <button id="zoomIn" aria-label="Zoom in">+</button>
+    <button id="zoomOut" aria-label="Zoom out">&minus;</button>
+  </div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="card">
+    <h1>Lasso <span>Planet</span></h1>
+    <p class="tag">Leave home, draw a loop, close it &mdash; everything inside is yours.<br>Don&rsquo;t let anyone cross your line.</p>
+    <div id="result" hidden>
+      <div class="resultTitle" id="resultTitle"></div>
+      <div class="stats">
+        <div><b id="statPct">0%</b><span>peak land</span></div>
+        <div><b id="statKills">0</b><span>cut-offs</span></div>
+        <div><b id="statTime">0s</b><span>survived</span></div>
+      </div>
+    </div>
+    <input id="name" maxlength="14" placeholder="Your name" autocomplete="off" spellcheck="false">
+    <div class="chips" id="shapes"></div>
+    <button id="play" class="primary">Play</button>
+    <div class="xrRow">
+      <button id="vr" hidden>Enter VR</button>
+      <button id="ar" hidden>Mixed reality</button>
+    </div>
+    <p class="hint" id="xrHint"></p>
+    <p class="hint">
+      <b>Steer</b> mouse / drag / WASD &middot; <b>Zoom</b> scroll / pinch / Q&thinsp;E &middot; <b>Space</b> whole-planet view<br>
+      <b>VR</b> left stick or hold trigger and point to steer &middot; right stick zooms &middot; A/X toggles globe view
+    </p>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

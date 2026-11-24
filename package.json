@@ -1,0 +1,11 @@
+{
+  "name": "lasso-planet",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Territory-capture game on tiny planets for desktop, mobile and WebXR headsets.",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node test/sim.mjs"
+  }
+}
