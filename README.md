@@ -26,7 +26,7 @@ WebXR needs HTTPS, which Pages provides.
 | Desktop | Mouse (head toward the pointer) or WASD / arrows | Scroll, `Q` / `E`, `Space` toggles whole-planet view |
 | Touch | Drag / tap where you want to go | Pinch, or the +/− buttons |
 | Gamepad | Left stick | Right stick |
-| VR / MR headset | Left thumbstick, **or** hold a trigger and point at the ground | Right thumbstick; `A`/`X` toggles globe view; `B`/`Y` re-centres |
+| VR / MR headset | Right thumbstick, **or** hold a trigger and point at the ground | Left thumbstick; `A`/`X` toggles globe view; `B`/`Y` re-centres |
 
 ### In a headset
 

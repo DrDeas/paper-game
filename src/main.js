@@ -216,7 +216,7 @@ function xrInput(dt) {
     if (gp) {
       const ax = gp.axes.length >= 4 ? gp.axes[2] : gp.axes[0] || 0;
       const ay = gp.axes.length >= 4 ? gp.axes[3] : gp.axes[1] || 0;
-      if (src.handedness === 'right') {
+      if (src.handedness === 'left') {
         if (Math.abs(ay) > 0.25) setZoom(view.zoomTarget + ay * dt * 0.7);
       } else if (Math.hypot(ax, ay) > 0.35) want = view.headingFromStick(ax, -ay);
       const pressed = gp.buttons.map((b) => b.pressed);
