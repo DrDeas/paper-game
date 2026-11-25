@@ -20,8 +20,9 @@ export const TURN_RATE = 5.5;   // rad / second
 const START_RINGS = 7;
 
 export class Game {
-  constructor(world, rng = Math.random) {
+  constructor(world, rng = Math.random, mode = 'classic') {
     this.world = world;
+    this.mode = mode === 'imperial' ? 'imperial' : 'classic';
     this.rng = rng;
     const V = world.V;
     this.owner = new Uint8Array(V);
@@ -40,7 +41,7 @@ export class Game {
       this.players.push({
         id, name: '', isBot: id !== HUMAN_ID, alive: false,
         d: [0, 1, 0], h: [1, 0, 0], want: null, cell: 0,
-        trailCells: [], count: 0, best: 0, kills: 0,
+        trailCells: [], count: 0, best: 0, kills: 0, pieces: 1,
         respawnAt: id === HUMAN_ID ? Infinity : 0.2 + id * 0.12, spawnTime: 0, ai: null,
       });
     }
@@ -74,7 +75,7 @@ export class Game {
     }
     p.alive = true;
     p.trailCells.length = 0;
-    p.count = 0; p.best = 0; p.kills = 0;
+    p.count = 0; p.best = 0; p.kills = 0; p.pieces = 1;
     p.want = null;
     p.cell = bestCell;
     p.spawnTime = this.time;
@@ -145,7 +146,9 @@ export class Game {
       }
       sizes.push(tail);
     }
-    if (sizes.length < 2) return;
+    // Imperial mode: annexed land may sit apart from the homeland, so a player is
+    // allowed `pieces` separate holdings; only pieces beyond that count as severed.
+    if (sizes.length <= q.pieces) { q.pieces = sizes.length; return; }
     // anchor: the land under the owner; else the land their trail left from; else the biggest piece
     let keep = -1;
     if (owner[q.cell] === id) keep = label[q.cell];
@@ -157,9 +160,12 @@ export class Game {
       }
     }
     if (keep < 0) { keep = 0; for (let i = 1; i < sizes.length; i++) if (sizes[i] > sizes[keep]) keep = i; }
+    // the anchor always survives, then the largest other holdings up to the allowance
+    const order = sizes.map((_, i) => i).filter((i) => i !== keep).sort((a, b) => sizes[b] - sizes[a]);
+    const kept = new Set([keep, ...order.slice(0, q.pieces - 1)]);
     let lost = 0;
     for (let c = 0; c < V; c++) {
-      if (label[c] === -1 || label[c] === keep) continue;
+      if (label[c] === -1 || kept.has(label[c])) continue;
       owner[c] = 0; this.capTime[c] = this.time; lost++;
     }
     q.count -= lost;
@@ -182,18 +188,34 @@ export class Game {
     const id = victim.id, V = this.world.V;
     for (const c of victim.trailCells) if (this.trail[c] === id) this.trail[c] = 0;
     victim.trailCells.length = 0;
+    // Imperial mode: the victor inherits the fallen player's land instead of it vanishing
+    const annex = this.mode === 'imperial' && killer && killer !== victim && killer.alive;
+    const D = this.world.dirs, vd = victim.d;
+    let annexed = 0;
     for (let c = 0; c < V; c++) {
-      if (this.owner[c] === id) { this.owner[c] = 0; this.capTime[c] = this.time; }
+      if (this.owner[c] !== id) continue;
+      if (annex) {
+        const dot = D[c * 3] * vd[0] + D[c * 3 + 1] * vd[1] + D[c * 3 + 2] * vd[2];
+        this.owner[c] = killer.id;
+        this.capTime[c] = this.time + Math.min(Math.acos(Math.min(1, Math.max(-1, dot))) * 1.4, 0.7);
+        annexed++;
+      } else { this.owner[c] = 0; this.capTime[c] = this.time; }
     }
     victim.count = 0;
     victim.want = null;
+    if (annex) {
+      killer.count += annexed;
+      if (killer.count > killer.best) killer.best = killer.count;
+      killer.pieces += 1;           // upper bound; trimmed to the real count at the next sweep
+      this._hurt.add(killer.id);
+    }
     victim.respawnAt = victim.isBot ? this.time + 1.5 + this.rng() * 3 : Infinity;
     if (killer && killer !== victim) killer.kills++;
     this.dirty = true;
     if (!silent) {
       this.events.push({
         type: 'death', id, name: victim.name, by: killer ? killer.id : 0,
-        byName: killer ? killer.name : '', d: victim.d.slice(), best: victim.best,
+        byName: killer ? killer.name : '', d: victim.d.slice(), best: victim.best, annexed,
       });
     }
   }
@@ -257,6 +279,7 @@ export class Game {
         if (mine >= 4) this._setOwner(n, p, this.capTime[c]);
       }
     }
+    this._hurt.add(id); // our own pieces may have merged
     this._sweepEmpty(p);
     this.dirty = true;
     this.events.push({ type: 'capture', id, gained: p.count - before, d: p.d.slice() });

@@ -9,6 +9,12 @@ any part severed from where you are standing is wiped back to unclaimed ground.
 
 No build step, no dependencies to install. It is a static site (three.js is vendored in `vendor/`).
 
+## Modes
+
+- **Classic** — an eliminated player's land returns to the planet.
+- **Imperial Mode** — eliminate a rival and their entire territory becomes yours. Annexed land can sit
+  apart from your homeland; each holding still obeys the stay-in-one-piece rule.
+
 ## Run it
 
 ```bash

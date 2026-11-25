@@ -71,6 +71,8 @@ h1 span { color: var(--me); }
 #name:focus { border-color: var(--me); }
 #name::placeholder { color: #8f98c9; font-weight: 600; }
 .chips { display: flex; gap: 8px; justify-content: center; margin: 12px 0; flex-wrap: wrap; }
+#modes { margin-bottom: 4px; }
+.modeHint { margin: 0 0 12px; min-height: 1.6em; }
 .chips button {
   height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--line); background: transparent;
   color: #c3cbf5; font: 700 13.5px var(--font); cursor: pointer;
