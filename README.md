@@ -3,21 +3,15 @@
 A territory-capture game played on tiny 3D planets — in a browser tab, on a phone, or inside a VR headset.
 
 Leave your home turf, draw a loop, and close it: everything inside becomes yours. While you are out,
-your line is exposed — if anyone crosses it (including you), you are out. Cut other players' lines to
-remove them from the planet. Territory must stay in one piece: if a rival carves through your land,
-any part severed from where you are standing is wiped back to unclaimed ground.
+your line is exposed — if anyone crosses it (including you), you are out. Cut another player's line and
+their entire territory becomes yours. Annexed land can sit apart from your homeland, but each holding
+must stay in one piece: if a rival carves through it, the severed part is wiped back to unclaimed ground.
 
 No build step, no dependencies to install. It is a static site (three.js is vendored in `vendor/`).
 
 Newcomers never appear on, inside, or right beside anyone's land: a spawn point needs a clear buffer
 from every territory, trail and player. On a crowded planet the buffer shrinks in stages, and if there is
 still no room a bot simply waits and tries again.
-
-## Modes
-
-- **Classic** — an eliminated player's land returns to the planet.
-- **Imperial Mode** — eliminate a rival and their entire territory becomes yours. Annexed land can sit
-  apart from your homeland; each holding still obeys the stay-in-one-piece rule.
 
 ## Run it
 

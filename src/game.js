@@ -21,9 +21,8 @@ const START_RINGS = 7;
 const SPAWN_BUFFER = 9;    // clear cells between a new starting disc and any land or trail (players: double)
 
 export class Game {
-  constructor(world, rng = Math.random, mode = 'classic') {
+  constructor(world, rng = Math.random) {
     this.world = world;
-    this.mode = mode === 'imperial' ? 'imperial' : 'classic';
     this.rng = rng;
     const V = world.V;
     this.owner = new Uint8Array(V);
@@ -196,7 +195,7 @@ export class Game {
       }
       sizes.push(tail);
     }
-    // Imperial mode: annexed land may sit apart from the homeland, so a player is
+    // Annexed land may sit apart from the homeland, so a player is
     // allowed `pieces` separate holdings; only pieces beyond that count as severed.
     if (sizes.length <= q.pieces) { q.pieces = sizes.length; return; }
     // anchor: the land under the owner; else the land their trail left from; else the biggest piece
@@ -238,8 +237,8 @@ export class Game {
     const id = victim.id, V = this.world.V;
     for (const c of victim.trailCells) if (this.trail[c] === id) this.trail[c] = 0;
     victim.trailCells.length = 0;
-    // Imperial mode: the victor inherits the fallen player's land instead of it vanishing
-    const annex = this.mode === 'imperial' && killer && killer !== victim && killer.alive;
+    // the victor inherits the fallen player's land instead of it vanishing
+    const annex = killer && killer !== victim && killer.alive;
     const D = this.world.dirs, vd = victim.d;
     let annexed = 0;
     for (let c = 0; c < V; c++) {

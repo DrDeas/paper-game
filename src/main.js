@@ -17,18 +17,12 @@ if (!SHAPES[shapeKey]) shapeKey = 'orb';
 let playZoom = Number(params.get('zoom') ?? store.get('lp.zoom', 0.3));
 let best = Number(store.get('lp.best', 0));
 let playing = false, startedAt = 0;
-const MODES = {
-  classic: { name: 'Classic', hint: 'Eliminated players\u2019 land returns to the planet.' },
-  imperial: { name: 'Imperial Mode', hint: 'Eliminate a rival and their whole territory becomes yours.' },
-};
-let modeKey = params.get('mode') || store.get('lp.mode', 'classic');
-if (!MODES[modeKey]) modeKey = 'classic';
 
 function buildWorld(key) {
   shapeKey = key;
   store.set('lp.shape', key);
   world = new World(key, 6);
-  game = new Game(world, Math.random, modeKey);
+  game = new Game(world);
   me = game.players[HUMAN_ID];
   view.setWorld(world, game);
   for (const b of $('shapes').children) b.classList.toggle('on', b.dataset.k === key);
@@ -41,18 +35,6 @@ for (const [k, s] of Object.entries(SHAPES)) {
   b.onclick = () => { if (!playing) buildWorld(k); };
   $('shapes').append(b);
 }
-function setMode(k) {
-  modeKey = k; store.set('lp.mode', k);
-  for (const b of $('modes').children) b.classList.toggle('on', b.dataset.k === k);
-  $('modeHint').textContent = MODES[k].hint;
-}
-for (const [k, m] of Object.entries(MODES)) {
-  const b = document.createElement('button');
-  b.textContent = m.name; b.dataset.k = k;
-  b.onclick = () => { if (!playing && k !== modeKey) { setMode(k); buildWorld(shapeKey); } };
-  $('modes').append(b);
-}
-setMode(modeKey);
 $('name').value = store.get('lp.name', '');
 buildWorld(shapeKey);
 window.__lp = { game, world, view };
@@ -287,7 +269,7 @@ function updateHud() {
   }
   if (view.inXR) {
     view.drawPanel({
-      title: me.alive ? fmt(me) : game.mode === 'imperial' ? 'Imperial Mode' : 'Lasso Planet',
+      title: me.alive ? fmt(me) : 'Lasso Planet',
       sub: 'best ' + Math.max(best, me.alive ? game.pct(me) : 0).toFixed(1) + '%',
       rows: rows.map((p) => ({ rank: st.indexOf(p) + 1, name: p.name, pct: fmt(p), color: hex(p.id), me: p === me })),
       message: playing ? '' : (lastResult ? lastResult + '  ' : '') + 'Pull the trigger to play',
