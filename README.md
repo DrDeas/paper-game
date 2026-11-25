@@ -17,6 +17,23 @@ Own **100% of the planet** and you win: a victory wave sweeps round the world, f
 chiptune fanfare plays. (Once a player holds 99.5% the last sliver falls to them automatically — there is
 no "outside" left to close a loop against.) Bots can win too.
 
+## Play with friends
+
+Press **Host a game**, then **Copy invite link** and send it to your friends (or read them the 5-character
+room code for **Join a game**). Up to 8 people share a planet, on any mix of desktop, phone and headset;
+bots fill the remaining seats, and a bot takes over when someone leaves.
+
+There is no game server. The host's browser runs the game and the others connect to it directly
+(WebRTC). The public [PeerJS](https://peerjs.com) service is used only to introduce the browsers to each
+other. Consequences worth knowing:
+
+- The game lasts as long as the host keeps the page open. If the host leaves, everyone drops back to solo.
+- Guests feel the network delay to the host in their steering.
+- Some strict networks (certain corporate, school or mobile carriers) block direct connections; there is
+  no relay fallback.
+- To use your own introduction server instead of the public one, run a
+  [PeerServer](https://github.com/peers/peerjs-server) and add `?signal=host:port` to the URL.
+
 ## Run it
 
 ```bash
@@ -50,6 +67,7 @@ moving you through space, and the sky stays fixed, which keeps it comfortable.
 - `src/game.js` — the rules: trails, enclosure flood-fill (everything except the largest outside region is captured), eliminations, respawns.
 - `src/bots.js` — bot AI: box-shaped excursions, path-finding home that avoids their own trail, threat assessment, and hunting exposed trails.
 - `src/view.js` — rendering. Ownership lives in a float texture read by the planet shader, so captures cost one small texture upload; borders are anti-aliased and smoothed in the fragment shader. Also the zoom "rig" shared by desktop and XR.
+- `src/net.js` — multiplayer: room codes, host/guest connections, snapshot + changed-cell sync, guest-side interpolation.
 - `src/main.js` — input (mouse, touch, keys, gamepad, XR controllers), HUD, session handling.
 
 `npm test` runs a headless bots-only soak test on every world shape and checks the simulation invariants.

@@ -29,6 +29,7 @@ export class Game {
     this.trail = new Uint8Array(V);
     this.capTime = new Float32Array(V).fill(-100);
     this.time = 0;
+    this.rev = 0;   // bumped whenever land changes hands (multiplayer sync watches it)
     this.dirty = true;
     this.events = [];
     this._label = new Int32Array(V);
@@ -52,8 +53,29 @@ export class Game {
 
   pct(p) { return (p.count / this.world.V) * 100; }
 
-  join(name) {
-    const p = this.players[HUMAN_ID];
+  // Hand a bot's seat to a person joining over the network; returns the seat id (0 = full).
+  claimSeat() {
+    let seat = null;
+    for (const p of this.players) {
+      if (!p || !p.isBot) continue;
+      if (!seat || (!p.alive && seat.alive) || (p.alive === seat.alive && p.count < seat.count)) seat = p;
+    }
+    if (!seat) return 0;
+    if (seat.alive) this.kill(seat, null, true);
+    seat.isBot = false; seat.ai = null; seat.respawnAt = Infinity;
+    return seat.id;
+  }
+
+  // The person left: a bot takes over their seat (and their land, if they were mid-game).
+  releaseSeat(id) {
+    const p = this.players[id];
+    if (!p || p.isBot || id === HUMAN_ID) return;
+    p.isBot = true; p.want = null;
+    if (p.alive) initBot(p, this.rng); else p.respawnAt = this.time + 2;
+  }
+
+  join(name, id = HUMAN_ID) {
+    const p = this.players[id];
     if (p.alive) this.kill(p, null, true);
     p.name = name || 'You';
     this.spawn(p);
@@ -158,7 +180,7 @@ export class Game {
       p.name = BOT_NAMES[(rng() * BOT_NAMES.length) | 0];
       initBot(p, rng);
     }
-    this.dirty = true;
+    this.dirty = true; this.rev++;
     this.events.push({ type: 'spawn', id: p.id });
     this._hurt.add(p.id);
     this._sweepEmpty(p);
@@ -220,7 +242,7 @@ export class Game {
       owner[c] = 0; this.capTime[c] = this.time; lost++;
     }
     q.count -= lost;
-    this.dirty = true;
+    this.dirty = true; this.rev++;
     this.events.push({ type: 'severed', id, lost });
   }
 
@@ -262,7 +284,7 @@ export class Game {
     }
     victim.respawnAt = victim.isBot ? this.time + 1.5 + this.rng() * 3 : Infinity;
     if (killer && killer !== victim) killer.kills++;
-    this.dirty = true;
+    this.dirty = true; this.rev++;
     if (!silent) {
       this.events.push({
         type: 'death', id, name: victim.name, by: killer ? killer.id : 0,
@@ -332,7 +354,7 @@ export class Game {
     }
     this._hurt.add(id); // our own pieces may have merged
     this._sweepEmpty(p);
-    this.dirty = true;
+    this.dirty = true; this.rev++;
     this.events.push({ type: 'capture', id, gained: p.count - before, d: p.d.slice() });
   }
 
@@ -374,7 +396,7 @@ export class Game {
     p.pieces = 1;
     p.want = null;
     this._hurt.clear();
-    this.dirty = true;
+    this.dirty = true; this.rev++;
     this.events.push({ type: 'win', id: p.id, name: p.name, d: p.d.slice() });
   }
 

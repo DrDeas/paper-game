@@ -185,6 +185,23 @@ class Ribbon {
     a[o] = cx + sx; a[o + 1] = cy + sy; a[o + 2] = cz + sz;
     a[o + 3] = cx - sx; a[o + 4] = cy - sy; a[o + 5] = cz - sz;
   }
+  // rebuild an existing trail from its cells (used when joining a game in progress)
+  seed(world, cells) {
+    const n = Math.min(cells.length, RIBBON_MAX - 2);
+    if (n < 2) return;
+    const pos = world.pos, nor = world.normals, P = [0, 0, 0], N = [0, 0, 0], h = [0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      const c = cells[i] * 3, a = cells[Math.max(i - 1, 0)] * 3, b = cells[Math.min(i + 1, n - 1)] * 3;
+      for (let k = 0; k < 3; k++) { P[k] = pos[c + k]; N[k] = nor[c + k]; h[k] = pos[b + k] - pos[a + k]; }
+      this.write(i, P, N, h);
+    }
+    this.n = n - 1;
+    const d = world.dirs, l = cells[n - 1] * 3;
+    this.last[0] = d[l]; this.last[1] = d[l + 1]; this.last[2] = d[l + 2];
+    this.attr.clearUpdateRanges();
+    this.attr.needsUpdate = true;
+    this.mesh.geometry.setDrawRange(0, this.n * 6);
+  }
   update(p, P, N) {
     const g = this.mesh.geometry;
     if (!p.alive || p.trailCells.length === 0) {
@@ -449,6 +466,8 @@ export class View {
     }
     this.pLife.fill(0);
   }
+
+  seedTrail(id, cells) { this.ribbons[id].seed(this.world, cells); }
 
   burst(d, colorId, count, speed = 0.12) {
     const P = this._P, N = this._N;

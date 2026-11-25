@@ -42,6 +42,23 @@
     <input id="name" maxlength="14" placeholder="Your name" autocomplete="off" spellcheck="false">
     <div class="chips" id="shapes"></div>
     <button id="play" class="primary">Play</button>
+    <div class="mp">
+      <div class="mpRow" id="mpIdle">
+        <button id="hostBtn">Host a game</button>
+        <button id="joinBtn">Join a game</button>
+      </div>
+      <div class="mpRow" id="mpJoin" hidden>
+        <input id="code" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="joinGo">Join</button>
+        <button id="joinCancel" class="ghost" aria-label="Cancel">&times;</button>
+      </div>
+      <div class="mpRow" id="mpLive" hidden>
+        <div class="room"><span id="mpLabel">Room</span><b id="mpCode"></b><i id="mpCount"></i></div>
+        <button id="copyLink">Copy invite link</button>
+        <button id="leave" class="ghost">Leave</button>
+      </div>
+      <p class="hint" id="mpHint"></p>
+    </div>
     <div class="xrRow">
       <button id="vr" hidden>Enter VR</button>
       <button id="ar" hidden>Mixed reality</button>
@@ -49,7 +66,7 @@
     <p class="hint" id="xrHint"></p>
     <p class="hint">
       <b>Steer</b> mouse / drag / WASD &middot; <b>Zoom</b> scroll / pinch / Q&thinsp;E &middot; <b>Space</b> whole-planet view<br>
-      <b>VR</b> right stick or hold trigger and point to steer &middot; left stick zooms &middot; A/X toggles globe view
+      <b>Friends</b> host a game and share the link &middot; <b>VR</b> right stick or hold trigger and point to steer &middot; left stick zooms &middot; A/X toggles globe view
     </p>
   </div>
 </div>

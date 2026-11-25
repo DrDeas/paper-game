@@ -2,6 +2,7 @@ import { World, SHAPES } from './world.js';
 import { Game, HUMAN_ID } from './game.js';
 import { View, THREE, hex } from './view.js';
 import { sfx, unlockAudio } from './audio.js';
+import { Net, HostSync, GuestSync, cleanCode, MAX_GUESTS } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -12,6 +13,8 @@ const store = {
 
 const view = new View($('scene'));
 let world, game, me;
+let myId = HUMAN_ID;      // which seat this browser controls (differs when joining someone's game)
+let role = 'solo';        // 'solo' | 'host' | 'guest'
 let shapeKey = params.get('shape') || store.get('lp.shape', 'orb');
 if (!SHAPES[shapeKey]) shapeKey = 'orb';
 let playZoom = Number(params.get('zoom') ?? store.get('lp.zoom', 0.3));
@@ -23,8 +26,9 @@ function buildWorld(key) {
   store.set('lp.shape', key);
   world = new World(key, 6);
   game = new Game(world);
-  me = game.players[HUMAN_ID];
+  me = game.players[myId];
   view.setWorld(world, game);
+  if (role === 'host') rehost();
   for (const b of $('shapes').children) b.classList.toggle('on', b.dataset.k === key);
   if (window.__lp) Object.assign(window.__lp, { game, world });
 }
@@ -32,7 +36,7 @@ function buildWorld(key) {
 for (const [k, s] of Object.entries(SHAPES)) {
   const b = document.createElement('button');
   b.textContent = s.name; b.dataset.k = k;
-  b.onclick = () => { if (!playing) buildWorld(k); };
+  b.onclick = () => { if (!playing && role !== 'guest') buildWorld(k); };
   $('shapes').append(b);
 }
 $('name').value = store.get('lp.name', '');
@@ -41,11 +45,16 @@ window.__lp = { game, world, view };
 
 function start() {
   unlockAudio();
-  if (game.winner) buildWorld(shapeKey); // the last planet was conquered: start a fresh one
   $('banner').hidden = true; party = 0;
   const name = $('name').value.trim() || 'You';
   store.set('lp.name', $('name').value.trim());
-  game.join(name);
+  if (role === 'guest') {
+    joinPending = true; guestWant = null;
+    net.send({ k: 'join', name }); // the host spawns us
+  } else {
+    if (game.winner) buildWorld(shapeKey); // the last planet was conquered: start a fresh one
+    game.join(name);
+  }
   playing = true; startedAt = game.time;
   view.zoomTarget = view.inXR ? xrZoom : playZoom;
   $('menu').classList.add('hide');
@@ -75,7 +84,7 @@ let lastResult = '';
 // someone owns 100% of the planet
 let party = 0, partyAt = 0;
 function planetWon(e) {
-  const mine = e.id === HUMAN_ID;
+  const mine = e.id === myId;
   playing = false;
   if (mine) { best = 100; store.set('lp.best', '100'); sfx.victory(); party = 9; }
   else sfx.death();
@@ -107,6 +116,162 @@ function celebrate(dt) {
   const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
   view.burst([r * Math.cos(a), u, r * Math.sin(a)], 1 + ((Math.random() * 12) | 0), 60, 0.32);
 }
+
+// ---------------------------------------------------------------- multiplayer
+// One browser hosts the real simulation; guests send steering and render the
+// host's state. See net.js for the wire format.
+const net = new Net(params.get('signal'));
+const seats = new Map(); // host: connection id -> seat
+let hostSync = null, guestSync = null, joinPending = false, guestWant = null, netAt = 0, pruneAt = 0;
+
+function mpShow(which, hint = '') {
+  for (const id of ['mpIdle', 'mpJoin', 'mpLive']) $(id).hidden = id !== which;
+  $('mpHint').textContent = hint;
+}
+function mpLive() {
+  mpShow('mpLive');
+  $('mpLabel').textContent = role === 'host' ? 'Your room' : 'Joined room';
+  $('mpCode').textContent = net.code;
+  $('copyLink').hidden = role !== 'host';
+  const n = seats.size + 1;
+  $('mpCount').textContent = role === 'host' ? (n === 1 ? 'waiting for friends…' : `${n} people connected`) : 'connected';
+  for (const b of $('shapes').children) b.disabled = role === 'guest';
+}
+const inviteLink = () => {
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set('room', net.code);
+  if (params.get('signal')) u.searchParams.set('signal', params.get('signal'));
+  return u.href;
+};
+const vec3 = (w) => (Array.isArray(w) && w.length === 3 && w.every(Number.isFinite) ? [w[0], w[1], w[2]] : null);
+
+// (re)introduce every connected guest to the current planet
+function rehost() {
+  hostSync = new HostSync(game);
+  for (const [cid, seat] of seats) {
+    const p = game.players[seat];
+    p.isBot = false; p.ai = null; p.respawnAt = Infinity;
+    net.sendTo(cid, hostSync.init(seat));
+  }
+}
+
+async function hostGame() {
+  mpShow('', 'Creating a room…');
+  try { await net.host(); } catch (err) { net.close(); mpShow('mpIdle', err.message); return; }
+  role = 'host';
+  hostSync = new HostSync(game);
+  net.onOpen = (cid) => {
+    const seat = game.claimSeat();
+    if (!seat) { net.sendTo(cid, { k: 'full' }); return; }
+    if (!seats.size) hostSync = new HostSync(game);
+    seats.set(cid, seat);
+    net.sendTo(cid, hostSync.init(seat));
+    mpLive();
+  };
+  net.onClose = (cid) => {
+    const seat = seats.get(cid);
+    seats.delete(cid);
+    if (seat) game.releaseSeat(seat);
+    mpLive();
+  };
+  net.onMessage = (m, cid) => {
+    const seat = seats.get(cid);
+    if (!seat || !m) return;
+    if (m.k === 'i') game.players[seat].want = vec3(m.w);
+    else if (m.k === 'join') {
+      if (game.winner) buildWorld(shapeKey); // anyone can kick off the next planet
+      game.join(String(m.name || 'Guest').slice(0, 14), seat);
+    }
+  };
+  mpLive();
+}
+
+async function joinGame(raw) {
+  const code = cleanCode(raw);
+  if (code.length !== 5) { mpShow('mpJoin', 'Room codes are 5 characters.'); return; }
+  mpShow('', `Connecting to ${code}…`);
+  net.onOpen = () => {};
+  net.onMessage = (m) => {
+    if (!m) return;
+    if (m.k === 'init') adopt(m);
+    else if (m.k === 's') guestSync?.receive(m);
+    else if (m.k === 'full') goSolo(`That game is full (${MAX_GUESTS + 1} people).`);
+  };
+  net.onClose = (reason) => goSolo(reason);
+  try { await net.join(code); } catch (err) { net.close(); mpShow('mpIdle', err.message); }
+}
+
+// guest: the host told us about (a new) planet
+function adopt(m) {
+  role = 'guest';
+  myId = m.you;
+  world = new World(m.shape, 6);
+  game = new Game(world);
+  me = game.players[myId];
+  view.setWorld(world, game);
+  guestSync = new GuestSync(game, m);
+  m.trails.forEach((cells, i) => view.seedTrail(i + 1, cells));
+  for (const b of $('shapes').children) b.classList.toggle('on', b.dataset.k === m.shape);
+  Object.assign(window.__lp, { game, world });
+  $('banner').hidden = true; party = 0;
+  if (joinPending) startedAt = game.time;
+  else { playing = false; $('menu').classList.remove('hide'); $('hud').hidden = true; }
+  mpLive();
+}
+
+function goSolo(hint = '') {
+  const was = role;
+  net.close();
+  for (const seat of seats.values()) game.releaseSeat(seat);
+  seats.clear();
+  role = 'solo'; guestSync = null; hostSync = null; joinPending = false;
+  for (const b of $('shapes').children) b.disabled = false;
+  if (was === 'guest' || myId !== HUMAN_ID) {
+    myId = HUMAN_ID; playing = false;
+    buildWorld(shapeKey);
+    $('menu').classList.remove('hide'); $('hud').hidden = true;
+  }
+  mpShow('mpIdle', hint);
+}
+
+$('hostBtn').onclick = hostGame;
+$('joinBtn').onclick = () => { mpShow('mpJoin'); $('code').focus(); };
+$('joinCancel').onclick = () => mpShow('mpIdle');
+$('joinGo').onclick = () => joinGame($('code').value);
+$('code').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') joinGame($('code').value); });
+$('leave').onclick = () => goSolo();
+$('copyLink').onclick = async () => {
+  const link = inviteLink();
+  try { await navigator.clipboard.writeText(link); $('mpHint').textContent = 'Invite link copied. Send it to your friends.'; }
+  catch { $('mpHint').textContent = link; }
+};
+if (params.get('room')) joinGame(params.get('room'));
+
+// With guests connected the host must keep real time even when its own frame rate
+// dips, so it catches up in small fixed steps instead of slowing the world down.
+function hostStep(seconds) {
+  for (let left = seconds; left > 1e-4; left -= 1 / 30) game.step(Math.min(1 / 30, left));
+}
+function hostNet(now) {
+  if (now < netAt) return;
+  netAt = now + 33;
+  if (net.guests) net.broadcast(hostSync.snapshot());
+  if (now > pruneAt) { pruneAt = now + 1000; net.prune(now); }
+}
+// keep the game running for guests while this tab is hidden or starved of frames (timers still tick)
+setInterval(() => {
+  if (role === 'guest') {
+    net.send({ k: 'h' });
+    if (performance.now() - guestSync.b.at > 8000) goSolo('Lost the connection to the host.');
+    return;
+  }
+  const now = performance.now();
+  if (role !== 'host' || !net.guests || now - last < 300) return;
+  hostStep(Math.min(1.5, (now - last) / 1000));
+  last = now;
+  handleEvents();
+  netAt = 0; hostNet(now);
+}, 250);
 
 // ---------------------------------------------------------------- input
 const keys = new Set();
@@ -317,25 +482,26 @@ function updateHud() {
 }
 
 function handleEvents() {
+  if (role === 'host' && net.guests) hostSync.events.push(...game.events);
   for (const e of game.events) {
     if (e.type === 'capture') {
-      if (e.id === HUMAN_ID) {
+      if (e.id === myId) {
         sfx.capture(e.gained);
         view.burst(e.d, e.id, Math.min(60, 10 + e.gained / 8), 0.1);
         const gain = (e.gained / world.V) * 100;
-        if (gain >= 0.1) toast('+' + gain.toFixed(1) + '%', hex(HUMAN_ID));
+        if (gain >= 0.1) toast('+' + gain.toFixed(1) + '%', hex(myId));
       }
     } else if (e.type === 'win') {
       planetWon(e);
     } else if (e.type === 'severed') {
-      if (e.id === HUMAN_ID) {
+      if (e.id === myId) {
         sfx.death();
         toast('Cut off! −' + ((e.lost / world.V) * 100).toFixed(1) + '%', '#ff9bb3');
       }
     } else if (e.type === 'death') {
       view.burst(e.d, e.id, 70, 0.16);
-      if (e.id === HUMAN_ID) { sfx.death(); gameOver(e); }
-      else if (e.by === HUMAN_ID) {
+      if (e.id === myId) { sfx.death(); gameOver(e); }
+      else if (e.by === myId) {
         sfx.kill();
         toast(e.annexed ? `You annexed ${e.name}! +${((e.annexed / world.V) * 100).toFixed(1)}%` : `You cut ${e.name}!`, '#fff');
         feed(`<b>You</b> cut <b style="color:${hex(e.id)}">${esc(e.name)}</b>`);
@@ -354,17 +520,30 @@ view.zoomTarget = playing ? playZoom : 1;
 view.zoom = 1;
 
 view.renderer.setAnimationLoop((now) => {
+  const prevFrame = last;
   const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
   last = now;
   if (calibrate > 0 && --calibrate === 0) recentre();
 
-  if (me.alive) {
-    const want = view.inXR ? xrInput(dt) : desktopInput(dt);
-    if (want !== undefined) me.want = want;
-    else if (!view.inXR && !pointerSteer) me.want = null;
-  } else if (view.inXR) xrInput(dt);
+  let want;
+  if (me.alive) want = view.inXR ? xrInput(dt) : desktopInput(dt);
+  else if (view.inXR) xrInput(dt);
+  const idle = !view.inXR && !pointerSteer; // no steering input: carry straight on
 
-  game.step(dt);
+  if (role === 'guest') {
+    if (me.alive) {
+      joinPending = false;
+      if (want !== undefined) guestWant = want; else if (idle) guestWant = null;
+    }
+    const t = performance.now();
+    if (t > netAt) { netAt = t + 50; net.send({ k: 'i', w: me.alive ? guestWant : null }); }
+    guestSync.frame(t);
+  } else {
+    if (me.alive) { if (want !== undefined) me.want = want; else if (idle) me.want = null; }
+    if (role === 'host' && net.guests) hostStep(Math.min(0.5, (now - prevFrame) / 1000));
+    else game.step(dt);
+    if (role === 'host') hostNet(performance.now());
+  }
   handleEvents();
   celebrate(dt);
   if (!playing && !view.inXR) view.zoomTarget = 1;

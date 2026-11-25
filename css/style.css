@@ -115,3 +115,19 @@ button.primary:active { transform: translateY(4px); box-shadow: 0 1px 0 #b98300;
 @keyframes crownBob { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(-12px) rotate(6deg); } }
 @keyframes shimmer { to { background-position: 300% 0; } }
 .resultTitle.won { color: #ffd84a; }
+
+.mp { margin-top: 14px; }
+.mpRow { display: flex; gap: 8px; align-items: stretch; }
+.mpRow button, .mpRow input {
+  flex: 1; height: 44px; border-radius: 22px; border: 2px solid #8f7bff; background: rgba(143, 123, 255, 0.14);
+  color: #d9d2ff; font: 800 14.5px var(--font); cursor: pointer; min-width: 0;
+}
+.mpRow input { text-align: center; letter-spacing: 0.3em; font-size: 17px; cursor: text; outline: none; -webkit-user-select: text; user-select: text; text-transform: uppercase; }
+.mpRow input::placeholder { color: #7f78b8; }
+.mpRow button.ghost { flex: 0 0 auto; padding: 0 14px; border-color: var(--line); background: transparent; color: #aab4e8; }
+.mpRow button:disabled { opacity: .5; cursor: default; }
+.room { flex: 1.2; display: flex; flex-direction: column; justify-content: center; line-height: 1.15; text-align: left; padding-left: 6px; }
+.room span { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: #aab4e8; }
+.room b { font-size: 21px; letter-spacing: .18em; color: #fff; }
+.room i { font-style: normal; font-size: 11px; color: #8ff5ea; }
+#mpHint { margin-top: 6px; }
