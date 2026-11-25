@@ -18,6 +18,7 @@ const BOT_NAMES = [
 export const SPEED = 0.28;      // surface units / second (mean world radius = 1)
 export const TURN_RATE = 5.5;   // rad / second
 const START_RINGS = 7;
+const SPAWN_BUFFER = 9;    // clear cells between a new starting disc and any land or trail (players: double)
 
 export class Game {
   constructor(world, rng = Math.random, mode = 'classic') {
@@ -35,6 +36,7 @@ export class Game {
     this._queue = new Int32Array(V);
     this._stamp = new Int32Array(V);
     this._stampN = 0;
+    this.spawnStats = { full: 0, reduced: 0, waited: 0, forced: 0 };
     this._hurt = new Set(); // players who lost land since the last sweep
     this.players = [null];
     for (let id = 1; id <= MAX_PLAYERS; id++) {
@@ -57,22 +59,69 @@ export class Game {
     return p;
   }
 
-  spawn(p) {
-    const w = this.world, D = w.dirs, rng = this.rng;
-    // pick the candidate cell farthest from everyone, preferring unclaimed ground
-    let bestCell = 0, bestScore = -Infinity;
-    for (let i = 0; i < 48; i++) {
-      const c = (rng() * w.V) | 0;
-      let score = 2;
+  // Distance (in cells) from every cell to the nearest claimed land or live trail.
+  _crowding() {
+    const w = this.world, V = w.V, N = w.nbr, dist = this._label, q = this._queue;
+    let head = 0, tail = 0;
+    for (let c = 0; c < V; c++) {
+      if (this.owner[c] || this.trail[c]) { dist[c] = 0; q[tail++] = c; } else dist[c] = 1e6;
+    }
+    while (head < tail) {
+      const c = q[head++], d = dist[c] + 1;
+      for (let j = 0; j < 6; j++) {
+        const n = N[c * 6 + j];
+        if (n < 0) break;
+        if (dist[n] > d) { dist[n] = d; q[tail++] = n; }
+      }
+    }
+    return dist;
+  }
+
+  // Choose where a newcomer appears: never on or inside anyone's land, with a clear
+  // buffer between the new starting disc and every territory, trail and player.
+  // Returns -1 when the planet is too crowded (the caller waits and retries).
+  _pickSpawn(force) {
+    const w = this.world, V = w.V, D = w.dirs, rng = this.rng;
+    const dist = this._crowding();
+    let headDot = 1;
+    const clearOfHeads = (c) => {
       for (const q of this.players) {
         if (!q || !q.alive) continue;
-        const dot = D[c * 3] * q.d[0] + D[c * 3 + 1] * q.d[1] + D[c * 3 + 2] * q.d[2];
-        score = Math.min(score, 1 - dot);
+        if (D[c * 3] * q.d[0] + D[c * 3 + 1] * q.d[1] + D[c * 3 + 2] * q.d[2] > headDot) return false;
       }
-      if (this.owner[c]) score -= 0.5;
-      if (this.trail[c]) score -= 0.5;
-      if (score > bestScore) { bestScore = score; bestCell = c; }
+      return true;
+    };
+    // relax the buffer in stages rather than give up straight away on a busy planet
+    for (const buffer of [SPAWN_BUFFER, SPAWN_BUFFER >> 1, 1]) {
+      const need = START_RINGS + 1 + buffer;
+      headDot = Math.cos(w.cellAngle * (START_RINGS + 1 + buffer * 2));
+      let best = -1, found = 0;
+      for (let i = 0; i < 4000 && found < 8; i++) {
+        const c = (rng() * V) | 0;
+        if (dist[c] < need || !clearOfHeads(c)) continue;
+        found++;
+        if (best < 0 || dist[c] > dist[best]) best = c; // lean toward open ground
+      }
+      if (best < 0) {
+        // random probing can miss a small pocket: scan everything before relaxing
+        for (let c = 0; c < V; c++) {
+          if (dist[c] >= need && (best < 0 || dist[c] > dist[best]) && clearOfHeads(c)) best = c;
+        }
+      }
+      if (best >= 0) { this.spawnStats[buffer === SPAWN_BUFFER ? 'full' : 'reduced']++; return best; }
     }
+    if (!force) { this.spawnStats.waited++; return -1; }
+    // a human pressed Play: put them in the emptiest spot there is
+    let best = 0;
+    for (let c = 1; c < V; c++) if (dist[c] > dist[best]) best = c;
+    this.spawnStats.forced++;
+    return best;
+  }
+
+  spawn(p) {
+    const w = this.world, D = w.dirs, rng = this.rng;
+    const bestCell = this._pickSpawn(!p.isBot);
+    if (bestCell < 0) return false;
     p.alive = true;
     p.trailCells.length = 0;
     p.count = 0; p.best = 0; p.kills = 0; p.pieces = 1;
@@ -94,7 +143,7 @@ export class Game {
     while (head < tail) {
       if (head === levelEnd) { depth++; levelEnd = tail; if (depth > START_RINGS + 3) break; }
       const c = q[head++];
-      if (!this.trail[c]) this._setOwner(c, p, this.time + depth * 0.03);
+      if (!this.trail[c] && !this.owner[c]) this._setOwner(c, p, this.time + depth * 0.03);
       for (let j = 0; j < 6; j++) {
         const n = N[c * 6 + j];
         if (n < 0) break;
@@ -112,6 +161,7 @@ export class Game {
     this.events.push({ type: 'spawn', id: p.id });
     this._hurt.add(p.id);
     this._sweepEmpty(p);
+    return true;
   }
 
   _setOwner(c, p, t) {
@@ -310,7 +360,7 @@ export class Game {
     for (let id = 1; id <= MAX_PLAYERS; id++) {
       const p = this.players[id];
       if (!p.alive) {
-        if (p.isBot && this.time >= p.respawnAt) this.spawn(p);
+        if (p.isBot && this.time >= p.respawnAt && !this.spawn(p)) p.respawnAt = this.time + 2;
         continue;
       }
       if (p.isBot) botThink(this, p);

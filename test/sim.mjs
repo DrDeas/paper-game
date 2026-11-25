@@ -8,6 +8,22 @@ for (const mode of ['classic', 'imperial']) for (const shape of ['orb', 'pebble'
   const g = new Game(w, rng, mode);
   g.players[1].isBot = true; g.players[1].respawnAt = 0;
   const deaths = { self: 0, cut: 0 }; let severed = 0, captures = 0, t0 = Date.now(), maxPct = 0;
+  // spawning must never take or touch anyone's land: measure the real gap each time
+  let minGap = 1e9;
+  const realSpawn = g.spawn.bind(g);
+  g.spawn = (p) => {
+    const before = g.owner.slice(), trailBefore = g.trail.slice();
+    const ok = realSpawn(p);
+    if (!ok) return ok;
+    const D = w.dirs;
+    for (let c = 0; c < w.V; c++) {
+      if (before[c] && g.owner[c] !== before[c]) throw new Error('spawn took claimed land');
+      if (!before[c] && !trailBefore[c]) continue;
+      const dot = D[c * 3] * p.d[0] + D[c * 3 + 1] * p.d[1] + D[c * 3 + 2] * p.d[2];
+      minGap = Math.min(minGap, Math.acos(Math.max(-1, Math.min(1, dot))) / w.cellAngle - 7.3);
+    }
+    return ok;
+  };
   for (let i = 0; i < 60 * 240; i++) {
     g.step(1 / 60);
     for (const e of g.events) {
@@ -41,5 +57,5 @@ for (const mode of ['classic', 'imperial']) for (const shape of ['orb', 'pebble'
     }
   }
   const top = g.standings().slice(0, 4).map((p) => `${p.name} ${g.pct(p).toFixed(1)}%`).join(', ');
-  console.log(`${mode} ${shape}: V=${w.V} ${Date.now() - t0}ms/240s  captures=${captures} severed=${severed} selfDeaths=${deaths.self} cuts=${deaths.cut} maxPct=${maxPct.toFixed(1)} | ${top}`);
+  console.log(`${mode} ${shape}: V=${w.V} ${Date.now() - t0}ms/240s  captures=${captures} severed=${severed} selfDeaths=${deaths.self} cuts=${deaths.cut} maxPct=${maxPct.toFixed(1)} spawns=${JSON.stringify(g.spawnStats)} minGap=${minGap.toFixed(1)} | ${top}`);
 }

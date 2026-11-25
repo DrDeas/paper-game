@@ -9,6 +9,10 @@ any part severed from where you are standing is wiped back to unclaimed ground.
 
 No build step, no dependencies to install. It is a static site (three.js is vendored in `vendor/`).
 
+Newcomers never appear on, inside, or right beside anyone's land: a spawn point needs a clear buffer
+from every territory, trail and player. On a crowded planet the buffer shrinks in stages, and if there is
+still no room a bot simply waits and tries again.
+
 ## Modes
 
 - **Classic** — an eliminated player's land returns to the planet.
