@@ -59,3 +59,21 @@ for (const shape of ['orb', 'pebble', 'dice', 'peanut']) {
   const top = g.standings().slice(0, 4).map((p) => `${p.name} ${g.pct(p).toFixed(1)}%`).join(', ');
   console.log(`${shape}: V=${w.V} ${Date.now() - t0}ms/240s  captures=${captures} severed=${severed} selfDeaths=${deaths.self} cuts=${deaths.cut} maxPct=${maxPct.toFixed(1)} spawns=${JSON.stringify(g.spawnStats)} minGap=${minGap.toFixed(1)} | ${top}`);
 }
+
+// win path: lower the threshold so a bot gets there, then check the planet is fully theirs
+{
+  const w = new World('orb', 6);
+  const g = new Game(w, rng);
+  g.players[1].isBot = true; g.players[1].respawnAt = 0;
+  g.winAt = 0.25;
+  let win = null;
+  for (let i = 0; i < 60 * 900 && !win; i++) { g.step(1 / 60); win = g.events.find((e) => e.type === 'win') || null; g.events.length = 0; }
+  if (!win) throw new Error('nobody won');
+  const p = g.players[win.id];
+  if (g.winner !== p || p.count !== w.V || g.pct(p) !== 100) throw new Error('winner does not own 100%');
+  if (g.owner.some((o) => o !== p.id) || g.trail.some((t) => t)) throw new Error('planet not fully claimed');
+  if (g.players.filter((q) => q && q.alive).length !== 1) throw new Error('rivals still alive');
+  const t = g.time, d = p.d.slice(); g.step(1 / 60);
+  if (p.d.some((v, i) => v !== d[i]) || g.time <= t) throw new Error('world should hold still after a win');
+  console.log(`win: ${win.name} conquered the planet at t=${t.toFixed(0)}s -> 100.0%`);
+}

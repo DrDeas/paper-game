@@ -41,6 +41,8 @@ window.__lp = { game, world, view };
 
 function start() {
   unlockAudio();
+  if (game.winner) buildWorld(shapeKey); // the last planet was conquered: start a fresh one
+  $('banner').hidden = true; party = 0;
   const name = $('name').value.trim() || 'You';
   store.set('lp.name', $('name').value.trim());
   game.join(name);
@@ -59,15 +61,52 @@ function gameOver(e) {
   const peak = (e.best / world.V) * 100;
   if (peak > best) { best = peak; store.set('lp.best', best.toFixed(2)); }
   $('result').hidden = false;
+  $('resultTitle').classList.remove('won');
   $('resultTitle').textContent = e.by === e.id ? 'You crossed your own line!' : e.byName ? `${e.byName} cut your line!` : 'Unravelled!';
   $('statPct').textContent = peak.toFixed(1) + '%';
   $('statKills').textContent = me.kills;
   $('statTime').textContent = Math.round(game.time - startedAt) + 's';
   $('play').textContent = 'Play again';
   lastResult = $('resultTitle').textContent;
-  setTimeout(() => { if (!playing) { $('menu').classList.remove('hide'); $('hud').hidden = true; } }, 900);
+  setTimeout(() => { if (!playing && !game.winner) { $('menu').classList.remove('hide'); $('hud').hidden = true; } }, 900);
 }
 let lastResult = '';
+
+// someone owns 100% of the planet
+let party = 0, partyAt = 0;
+function planetWon(e) {
+  const mine = e.id === HUMAN_ID;
+  playing = false;
+  if (mine) { best = 100; store.set('lp.best', '100'); sfx.victory(); party = 9; }
+  else sfx.death();
+  lastResult = mine ? 'You conquered the planet!' : `${e.name} conquered the planet!`;
+  $('banner').classList.toggle('lost', !mine);
+  $('bannerTitle').textContent = mine ? 'Planet conquered!' : 'Planet lost';
+  $('bannerSub').textContent = mine ? '100% — every last patch is yours' : `${e.name} took 100% of the planet`;
+  $('banner').hidden = false;
+  $('result').hidden = false;
+  $('resultTitle').textContent = lastResult;
+  $('resultTitle').classList.toggle('won', mine);
+  if (mine) {
+    $('statPct').textContent = '100%';
+    $('statKills').textContent = me.kills;
+    $('statTime').textContent = Math.round(game.time - startedAt) + 's';
+  }
+  $('play').textContent = 'Play again';
+  $('hud').hidden = true;
+  view.zoomTarget = view.inXR ? Math.max(view.zoomTarget, 0.8) : 1; // pull back to admire it
+  const won = game;
+  setTimeout(() => { if (game === won && game.winner) { $('banner').hidden = true; $('menu').classList.remove('hide'); } }, mine ? 8500 : 3500);
+}
+function celebrate(dt) {
+  if (party <= 0) return;
+  party -= dt; partyAt -= dt;
+  if (partyAt > 0) return;
+  partyAt = 0.08;
+  // fireworks popping all over the planet in every player colour
+  const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+  view.burst([r * Math.cos(a), u, r * Math.sin(a)], 1 + ((Math.random() * 12) | 0), 60, 0.32);
+}
 
 // ---------------------------------------------------------------- input
 const keys = new Set();
@@ -272,7 +311,7 @@ function updateHud() {
       title: me.alive ? fmt(me) : 'Lasso Planet',
       sub: 'best ' + Math.max(best, me.alive ? game.pct(me) : 0).toFixed(1) + '%',
       rows: rows.map((p) => ({ rank: st.indexOf(p) + 1, name: p.name, pct: fmt(p), color: hex(p.id), me: p === me })),
-      message: playing ? '' : (lastResult ? lastResult + '  ' : '') + 'Pull the trigger to play',
+      message: playing ? '' : game.winner ? lastResult + '  Trigger: new planet' : (lastResult ? lastResult + '  ' : '') + 'Pull the trigger to play',
     });
   }
 }
@@ -286,6 +325,8 @@ function handleEvents() {
         const gain = (e.gained / world.V) * 100;
         if (gain >= 0.1) toast('+' + gain.toFixed(1) + '%', hex(HUMAN_ID));
       }
+    } else if (e.type === 'win') {
+      planetWon(e);
     } else if (e.type === 'severed') {
       if (e.id === HUMAN_ID) {
         sfx.death();
@@ -325,6 +366,7 @@ view.renderer.setAnimationLoop((now) => {
 
   game.step(dt);
   handleEvents();
+  celebrate(dt);
   if (!playing && !view.inXR) view.zoomTarget = 1;
   view.menuShiftTarget = $('menu').classList.contains('hide') ? 0 : 1;
   const leader = me.alive ? me : game.standings()[0];

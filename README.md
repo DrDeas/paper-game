@@ -13,6 +13,10 @@ Newcomers never appear on, inside, or right beside anyone's land: a spawn point 
 from every territory, trail and player. On a crowded planet the buffer shrinks in stages, and if there is
 still no room a bot simply waits and tries again.
 
+Own **100% of the planet** and you win: a victory wave sweeps round the world, fireworks go off, and a
+chiptune fanfare plays. (Once a player holds 99.5% the last sliver falls to them automatically — there is
+no "outside" left to close a loop against.) Bots can win too.
+
 ## Run it
 
 ```bash

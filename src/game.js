@@ -35,6 +35,8 @@ export class Game {
     this._queue = new Int32Array(V);
     this._stamp = new Int32Array(V);
     this._stampN = 0;
+    this.winner = null;
+    this.winAt = 0.995; // owning this share of the planet finishes the job (see _conquer)
     this.spawnStats = { full: 0, reduced: 0, waited: 0, forced: 0 };
     this._hurt = new Set(); // players who lost land since the last sweep
     this.players = [null];
@@ -353,9 +355,37 @@ export class Game {
     }
   }
 
+  // The last sliver of a planet can't be lassoed (there is no "outside" left to
+  // close a loop against), so once a player holds effectively everything the
+  // rest falls to them: every cell is theirs and the round is won at 100%.
+  _conquer(p) {
+    const w = this.world, V = w.V, D = w.dirs;
+    this.winner = p;
+    for (const q of this.players) if (q && q.alive && q !== p) this.kill(q, p);
+    p.trailCells.length = 0;
+    this.trail.fill(0);
+    for (let c = 0; c < V; c++) {
+      const dot = D[c * 3] * p.d[0] + D[c * 3 + 1] * p.d[1] + D[c * 3 + 2] * p.d[2];
+      this.owner[c] = p.id;
+      // a victory wave sweeps round the whole planet from the winner
+      this.capTime[c] = this.time + Math.acos(Math.min(1, Math.max(-1, dot))) * 0.55;
+    }
+    p.count = p.best = V;
+    p.pieces = 1;
+    p.want = null;
+    this._hurt.clear();
+    this.dirty = true;
+    this.events.push({ type: 'win', id: p.id, name: p.name, d: p.d.slice() });
+  }
+
   step(dt) {
     this.time += dt;
     const w = this.world;
+    if (this.winner) return; // round over: the world holds still for the celebration
+    for (let id = 1; id <= MAX_PLAYERS; id++) {
+      const q = this.players[id];
+      if (q.alive && q.count >= w.V * this.winAt) { this._conquer(q); return; }
+    }
     for (let id = 1; id <= MAX_PLAYERS; id++) {
       const p = this.players[id];
       if (!p.alive) {
