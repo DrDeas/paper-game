@@ -4,7 +4,8 @@ A territory-capture game played on tiny 3D planets — in a browser tab, on a ph
 
 Leave your home turf, draw a loop, and close it: everything inside becomes yours. While you are out,
 your line is exposed — if anyone crosses it (including you), you are out. Cut other players' lines to
-remove them from the planet.
+remove them from the planet. Territory must stay in one piece: if a rival carves through your land,
+any part severed from where you are standing is wiped back to unclaimed ground.
 
 No build step, no dependencies to install. It is a static site (three.js is vendored in `vendor/`).
 

@@ -34,6 +34,7 @@ export class Game {
     this._queue = new Int32Array(V);
     this._stamp = new Int32Array(V);
     this._stampN = 0;
+    this._hurt = new Set(); // players who lost land since the last sweep
     this.players = [null];
     for (let id = 1; id <= MAX_PLAYERS; id++) {
       this.players.push({
@@ -108,20 +109,70 @@ export class Game {
     }
     this.dirty = true;
     this.events.push({ type: 'spawn', id: p.id });
+    this._hurt.add(p.id);
     this._sweepEmpty(p);
   }
 
   _setOwner(c, p, t) {
     const prev = this.owner[c];
     if (prev === p.id) return;
-    if (prev) this.players[prev].count--;
+    if (prev) { this.players[prev].count--; this._hurt.add(prev); }
     this.owner[c] = p.id;
     this.capTime[c] = t;
     p.count++;
     if (p.count > p.best) p.best = p.count;
   }
 
+  // A territory must stay in one piece. When someone carves through it, only the
+  // piece its owner is anchored to survives; every severed piece goes back to unclaimed.
+  _pruneSevered(q) {
+    const w = this.world, V = w.V, N = w.nbr, owner = this.owner, id = q.id;
+    const label = this._label, queue = this._queue;
+    label.fill(-1);
+    const sizes = [];
+    for (let s = 0; s < V; s++) {
+      if (owner[s] !== id || label[s] !== -1) continue;
+      const L = sizes.length;
+      let head = 0, tail = 0;
+      queue[tail++] = s; label[s] = L;
+      while (head < tail) {
+        const c = queue[head++];
+        for (let j = 0; j < 6; j++) {
+          const n = N[c * 6 + j];
+          if (n < 0) break;
+          if (label[n] === -1 && owner[n] === id) { label[n] = L; queue[tail++] = n; }
+        }
+      }
+      sizes.push(tail);
+    }
+    if (sizes.length < 2) return;
+    // anchor: the land under the owner; else the land their trail left from; else the biggest piece
+    let keep = -1;
+    if (owner[q.cell] === id) keep = label[q.cell];
+    else if (q.trailCells.length) {
+      const c = q.trailCells[0];
+      for (let j = 0; j < 6 && keep < 0; j++) {
+        const n = N[c * 6 + j];
+        if (n >= 0 && owner[n] === id) keep = label[n];
+      }
+    }
+    if (keep < 0) { keep = 0; for (let i = 1; i < sizes.length; i++) if (sizes[i] > sizes[keep]) keep = i; }
+    let lost = 0;
+    for (let c = 0; c < V; c++) {
+      if (label[c] === -1 || label[c] === keep) continue;
+      owner[c] = 0; this.capTime[c] = this.time; lost++;
+    }
+    q.count -= lost;
+    this.dirty = true;
+    this.events.push({ type: 'severed', id, lost });
+  }
+
   _sweepEmpty(by) {
+    for (const hid of this._hurt) {
+      const q = this.players[hid];
+      if (q.alive && q.count > 0) this._pruneSevered(q);
+    }
+    this._hurt.clear();
     for (const q of this.players) if (q && q.alive && q.count <= 0) this.kill(q, by);
   }
 

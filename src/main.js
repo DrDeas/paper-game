@@ -286,6 +286,11 @@ function handleEvents() {
         const gain = (e.gained / world.V) * 100;
         if (gain >= 0.1) toast('+' + gain.toFixed(1) + '%', hex(HUMAN_ID));
       }
+    } else if (e.type === 'severed') {
+      if (e.id === HUMAN_ID) {
+        sfx.death();
+        toast('Cut off! −' + ((e.lost / world.V) * 100).toFixed(1) + '%', '#ff9bb3');
+      }
     } else if (e.type === 'death') {
       view.burst(e.d, e.id, 70, 0.16);
       if (e.id === HUMAN_ID) { sfx.death(); gameOver(e); }
