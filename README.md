@@ -19,8 +19,8 @@ no "outside" left to close a loop against.) Bots can win too.
 
 ## Worlds
 
-20 worlds, picked from an endlessly swipeable row on the menu: Orb, Pebble, Dice, Peanut, Puppy, Teddy,
-Mushroom, Star, Pencil, Toy Car, Unicorn, Guitar, Pig, Cupcake, Horse, Lion, Alligator, Smiley, Teapot
+21 worlds, picked from an endlessly swipeable row on the menu: Orb, Pebble, Dice, Peanut, Puppy, Teddy,
+Mushroom, Star, Pencil, Toy Car, Shuttle, Unicorn, Guitar, Pig, Cupcake, Horse, Lion, Alligator, Smiley, Teapot
 and Tooth. Every world has the same surface area and the same number of cells, so speed and
 territory percentages mean the same thing everywhere; only the terrain changes.
 

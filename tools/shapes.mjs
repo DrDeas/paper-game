@@ -21,6 +21,9 @@ const flutedCup = (y0, y1, r0, r1, flutes, depth) => (x, y, z) => {
   return Math.min(Math.max(side, cap), 0) + Math.hypot(Math.max(side, 0), Math.max(cap, 0)) - 0.03;
 };
 
+// swept leading edges for the shuttle: full span at the tail, narrowing toward the nose
+const deltaWing = (x, y, z) => Math.max((Math.abs(x) + (z + 1.3) * 0.62 - 1.42) / Math.hypot(1, 0.62), -1.3 - z);
+
 export const SCULPTS = {
   // two lobes of slightly different size with a pinched waist
   peanut: union(0.42, ellipsoid(0, 0.62, 0, 0.6, 0.66, 0.6), ellipsoid(0, -0.66, 0, 0.66, 0.72, 0.66)),
@@ -70,6 +73,16 @@ export const SCULPTS = {
     mirrorX(cylinder(0.56, -0.4, -0.76, 'x', 0.36, 0.2, 0.12)),            // rear wheels
     mirrorX(sphere(0.38, -0.02, 1.2, 0.13)),                               // headlights
     box(0, 0.05, -1.25, 0.5, 0.06, 0.1, 0.05)),                            // spoiler lip
+
+  // space shuttle orbiter: blunt nose, delta wings, tail fin, engine pods (nose toward the viewer)
+  shuttle: union(0.08,
+    capsule([0, 0, -1.0], [0, 0, 1.0], 0.38, 0.33),                        // fuselage
+    ellipsoid(0, -0.03, 1.3, 0.3, 0.27, 0.42),                             // nose
+    ellipsoid(0, 0.2, 0.9, 0.25, 0.19, 0.32),                              // cockpit hump
+    intersect(0.1, box(0, -0.2, -0.25, 1.35, 0.14, 1.05, 0.1), deltaWing), // wings
+    rotX(box(0, 0.82, -0.7, 0.11, 0.58, 0.27, 0.09), -0.38),               // tail fin
+    mirrorX(capsule([0.3, 0.3, -0.72], [0.3, 0.28, -1.12], 0.18)),         // engine pods
+    sphere(0, 0.2, -1.32, 0.17), mirrorX(sphere(0.21, -0.06, -1.32, 0.17))), // main engines
 
   // chubby pony with a horn and a flowing mane and tail
   unicorn: union(0.11,

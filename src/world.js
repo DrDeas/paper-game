@@ -28,6 +28,7 @@ export const SHAPES = {
   star: { name: 'Star', icon: '⭐', hue: 48 },
   pencil: { name: 'Pencil', icon: '✏️', hue: 40 },
   car: { name: 'Toy Car', icon: '🚗', hue: 2 },
+  shuttle: { name: 'Shuttle', icon: '🚀', hue: 215 },
   unicorn: { name: 'Unicorn', icon: '🦄', hue: 300 },
   guitar: { name: 'Guitar', icon: '🎸', hue: 14 },
   pig: { name: 'Pig', icon: '🐖', hue: 335 },
