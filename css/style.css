@@ -131,3 +131,40 @@ button.primary:active { transform: translateY(4px); box-shadow: 0 1px 0 #b98300;
 .room b { font-size: 21px; letter-spacing: .18em; color: #fff; }
 .room i { font-style: normal; font-size: 11px; color: #8ff5ea; }
 #mpHint { margin-top: 6px; }
+
+/* world picker: one swipeable row instead of a wall of chips */
+.card { --pad: 26px; }
+.carousel { position: relative; margin: 12px calc(var(--pad) * -1); }
+#shapes {
+  display: flex; gap: 8px; overflow-x: auto; padding: 4px var(--pad); scroll-padding: 0 var(--pad);
+  scroll-snap-type: x proximity; scrollbar-width: none; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 22px), transparent);
+}
+#shapes::-webkit-scrollbar { display: none; }
+#shapes.dragging { scroll-snap-type: none; cursor: grabbing; }
+#shapes button {
+  flex: 0 0 auto; width: 70px; height: 68px; padding: 0; border-radius: 18px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05); color: #c3cbf5; font: 700 11px var(--font); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  scroll-snap-align: center; transition: transform 0.12s, background 0.12s;
+}
+#shapes button .ico { font-size: 27px; line-height: 1; pointer-events: none; }
+#shapes button span { pointer-events: none; white-space: nowrap; }
+#shapes button:hover { background: rgba(255, 255, 255, 0.12); }
+#shapes button.on { background: #fff; color: #171538; border-color: #fff; transform: translateY(-2px); }
+#shapes button.loading .ico { animation: wobble 0.5s ease-in-out infinite alternate; }
+#shapes button:disabled { opacity: 0.45; cursor: default; }
+@keyframes wobble { from { transform: scale(0.8) rotate(-12deg); } to { transform: scale(1.1) rotate(12deg); } }
+.carousel .nav {
+  position: absolute; top: 50%; z-index: 1; width: 30px; height: 30px; margin-top: -15px; padding: 0 0 3px; border-radius: 15px;
+  border: 1px solid var(--line); background: rgba(22, 25, 62, 0.92); color: #fff; font: 700 20px/1 var(--font); cursor: pointer;
+}
+.carousel .prev { left: 6px; } .carousel .next { right: 6px; }
+@media (hover: none) { .carousel .nav { display: none; } }
+@media (max-aspect-ratio: 5/6) { .card { --pad: 20px; } }
+/* the picker's long row must not widen the menu's layout track */
+.overlay { grid-template-columns: minmax(0, 1fr); }
+.card, .carousel, #shapes { min-width: 0; max-width: 100%; }
+.carousel { max-width: none; }
+#shapes button { touch-action: pan-x; }

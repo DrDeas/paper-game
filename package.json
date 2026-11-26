@@ -6,6 +6,7 @@
   "description": "Territory-capture game on tiny planets for desktop, mobile and WebXR headsets.",
   "scripts": {
     "start": "python3 -m http.server 8080",
-    "test": "node test/sim.mjs"
+    "test": "node test/sim.mjs",
+    "bake": "node tools/bake-worlds.mjs"
   }
 }

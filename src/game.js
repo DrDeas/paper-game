@@ -44,7 +44,7 @@ export class Game {
     for (let id = 1; id <= MAX_PLAYERS; id++) {
       this.players.push({
         id, name: '', isBot: id !== HUMAN_ID, alive: false,
-        d: [0, 1, 0], h: [1, 0, 0], want: null, cell: 0,
+        pos: [0, 0, 1], h: [1, 0, 0], n: [0, 0, 1], tri: 0, near: 0, want: null, cell: 0,
         trailCells: [], count: 0, best: 0, kills: 0, pieces: 1,
         respawnAt: id === HUMAN_ID ? Infinity : 0.2 + id * 0.12, spawnTime: 0, ai: null,
       });
@@ -104,20 +104,20 @@ export class Game {
   // buffer between the new starting disc and every territory, trail and player.
   // Returns -1 when the planet is too crowded (the caller waits and retries).
   _pickSpawn(force) {
-    const w = this.world, V = w.V, D = w.dirs, rng = this.rng;
+    const w = this.world, V = w.V, rng = this.rng;
     const dist = this._crowding();
-    let headDot = 1;
+    let headGap = 0;
     const clearOfHeads = (c) => {
       for (const q of this.players) {
         if (!q || !q.alive) continue;
-        if (D[c * 3] * q.d[0] + D[c * 3 + 1] * q.d[1] + D[c * 3 + 2] * q.d[2] > headDot) return false;
+        if (w.cellsTo(q.pos, c) < headGap) return false;
       }
       return true;
     };
     // relax the buffer in stages rather than give up straight away on a busy planet
     for (const buffer of [SPAWN_BUFFER, SPAWN_BUFFER >> 1, 1]) {
       const need = START_RINGS + 1 + buffer;
-      headDot = Math.cos(w.cellAngle * (START_RINGS + 1 + buffer * 2));
+      headGap = START_RINGS + 1 + buffer * 2;
       let best = -1, found = 0;
       for (let i = 0; i < 4000 && found < 8; i++) {
         const c = (rng() * V) | 0;
@@ -142,7 +142,7 @@ export class Game {
   }
 
   spawn(p) {
-    const w = this.world, D = w.dirs, rng = this.rng;
+    const w = this.world, rng = this.rng;
     const bestCell = this._pickSpawn(!p.isBot);
     if (bestCell < 0) return false;
     p.alive = true;
@@ -151,16 +151,10 @@ export class Game {
     p.want = null;
     p.cell = bestCell;
     p.spawnTime = this.time;
-    p.d = [D[bestCell * 3], D[bestCell * 3 + 1], D[bestCell * 3 + 2]];
-    // random tangent heading
-    let hx = rng() - 0.5, hy = rng() - 0.5, hz = rng() - 0.5;
-    const k = hx * p.d[0] + hy * p.d[1] + hz * p.d[2];
-    hx -= p.d[0] * k; hy -= p.d[1] * k; hz -= p.d[2] * k;
-    const l = Math.hypot(hx, hy, hz) || 1;
-    p.h = [hx / l, hy / l, hz / l];
+    w.place(p, bestCell, rng);
     // claim a starting disc
     const q = this._queue, st = this._stamp, s = ++this._stampN, N = w.nbr;
-    const minDot = Math.cos(w.cellAngle * (START_RINGS + 0.3));
+    const reach = w.cellLen * (START_RINGS + 0.3);
     let head = 0, tail = 0, levelEnd = 1, depth = 0;
     q[tail++] = bestCell; st[bestCell] = s;
     while (head < tail) {
@@ -173,7 +167,7 @@ export class Game {
         if (st[n] === s) continue;
         st[n] = s;
         // keep the disc round rather than hexagonal
-        if (D[n * 3] * p.d[0] + D[n * 3 + 1] * p.d[1] + D[n * 3 + 2] * p.d[2] >= minDot) q[tail++] = n;
+        if (w.dist(p.pos, n) <= reach) q[tail++] = n;
       }
     }
     if (p.isBot) {
@@ -263,14 +257,13 @@ export class Game {
     victim.trailCells.length = 0;
     // the victor inherits the fallen player's land instead of it vanishing
     const annex = killer && killer !== victim && killer.alive;
-    const D = this.world.dirs, vd = victim.d;
+    const w = this.world;
     let annexed = 0;
     for (let c = 0; c < V; c++) {
       if (this.owner[c] !== id) continue;
       if (annex) {
-        const dot = D[c * 3] * vd[0] + D[c * 3 + 1] * vd[1] + D[c * 3 + 2] * vd[2];
         this.owner[c] = killer.id;
-        this.capTime[c] = this.time + Math.min(Math.acos(Math.min(1, Math.max(-1, dot))) * 1.4, 0.7);
+        this.capTime[c] = this.time + Math.min(w.dist(victim.pos, c) * 1.4, 0.7);
         annexed++;
       } else { this.owner[c] = 0; this.capTime[c] = this.time; }
     }
@@ -288,13 +281,13 @@ export class Game {
     if (!silent) {
       this.events.push({
         type: 'death', id, name: victim.name, by: killer ? killer.id : 0,
-        byName: killer ? killer.name : '', d: victim.d.slice(), best: victim.best, annexed,
+        byName: killer ? killer.name : '', d: victim.pos.slice(), n: victim.n.slice(), best: victim.best, annexed,
       });
     }
   }
 
   capture(p) {
-    const w = this.world, V = w.V, N = w.nbr, D = w.dirs;
+    const w = this.world, V = w.V, N = w.nbr;
     const owner = this.owner, trail = this.trail, id = p.id, now = this.time;
     const before = p.count;
     const fresh = [];
@@ -331,9 +324,7 @@ export class Game {
       for (let c = 0; c < V; c++) {
         const L = label[c];
         if (L === -1 || L === big) continue;
-        const dot = D[c * 3] * p.d[0] + D[c * 3 + 1] * p.d[1] + D[c * 3 + 2] * p.d[2];
-        const ang = Math.acos(Math.min(1, Math.max(-1, dot)));
-        this._setOwner(c, p, now + Math.min(ang * 1.4, 0.55));
+        this._setOwner(c, p, now + Math.min(w.dist(p.pos, c) * 1.4, 0.55));
         fresh.push(c);
         const t = trail[c];
         if (t && t !== id && !victims.includes(t)) victims.push(t);
@@ -355,7 +346,7 @@ export class Game {
     this._hurt.add(id); // our own pieces may have merged
     this._sweepEmpty(p);
     this.dirty = true; this.rev++;
-    this.events.push({ type: 'capture', id, gained: p.count - before, d: p.d.slice() });
+    this.events.push({ type: 'capture', id, gained: p.count - before, d: p.pos.slice(), n: p.n.slice() });
   }
 
   _enter(p, c) {
@@ -381,23 +372,22 @@ export class Game {
   // close a loop against), so once a player holds effectively everything the
   // rest falls to them: every cell is theirs and the round is won at 100%.
   _conquer(p) {
-    const w = this.world, V = w.V, D = w.dirs;
+    const w = this.world, V = w.V;
     this.winner = p;
     for (const q of this.players) if (q && q.alive && q !== p) this.kill(q, p);
     p.trailCells.length = 0;
     this.trail.fill(0);
     for (let c = 0; c < V; c++) {
-      const dot = D[c * 3] * p.d[0] + D[c * 3 + 1] * p.d[1] + D[c * 3 + 2] * p.d[2];
       this.owner[c] = p.id;
       // a victory wave sweeps round the whole planet from the winner
-      this.capTime[c] = this.time + Math.acos(Math.min(1, Math.max(-1, dot))) * 0.55;
+      this.capTime[c] = this.time + w.dist(p.pos, c) * 0.5;
     }
     p.count = p.best = V;
     p.pieces = 1;
     p.want = null;
     this._hurt.clear();
     this.dirty = true; this.rev++;
-    this.events.push({ type: 'win', id: p.id, name: p.name, d: p.d.slice() });
+    this.events.push({ type: 'win', id: p.id, name: p.name, d: p.pos.slice(), n: p.n.slice() });
   }
 
   step(dt) {
@@ -415,37 +405,16 @@ export class Game {
         continue;
       }
       if (p.isBot) botThink(this, p);
-      const d = p.d, h = p.h;
       if (p.want) {
-        let wx = p.want[0], wy = p.want[1], wz = p.want[2];
-        const k = wx * d[0] + wy * d[1] + wz * d[2];
-        wx -= d[0] * k; wy -= d[1] * k; wz -= d[2] * k;
-        const l = Math.hypot(wx, wy, wz);
-        if (l > 1e-6) {
-          wx /= l; wy /= l; wz /= l;
-          const cx = h[1] * wz - h[2] * wy, cy = h[2] * wx - h[0] * wz, cz = h[0] * wy - h[1] * wx;
-          const ang = Math.atan2(cx * d[0] + cy * d[1] + cz * d[2], h[0] * wx + h[1] * wy + h[2] * wz);
-          const lim = TURN_RATE * dt;
-          const da = Math.max(-lim, Math.min(lim, ang));
-          const lx = d[1] * h[2] - d[2] * h[1], ly = d[2] * h[0] - d[0] * h[2], lz = d[0] * h[1] - d[1] * h[0];
-          const cs = Math.cos(da), sn = Math.sin(da);
-          h[0] = h[0] * cs + lx * sn; h[1] = h[1] * cs + ly * sn; h[2] = h[2] * cs + lz * sn;
-        }
+        const lim = TURN_RATE * dt;
+        w.turn(p, Math.max(-lim, Math.min(lim, w.angleTo(p, p.want))));
       }
-      const a = (SPEED * dt) / w.radius(d);
-      const cs = Math.cos(a), sn = Math.sin(a);
-      const nx = d[0] * cs + h[0] * sn, ny = d[1] * cs + h[1] * sn, nz = d[2] * cs + h[2] * sn;
-      let gx = h[0] * cs - d[0] * sn, gy = h[1] * cs - d[1] * sn, gz = h[2] * cs - d[2] * sn;
-      let l = Math.hypot(nx, ny, nz);
-      d[0] = nx / l; d[1] = ny / l; d[2] = nz / l;
-      const k = gx * d[0] + gy * d[1] + gz * d[2];
-      gx -= d[0] * k; gy -= d[1] * k; gz -= d[2] * k;
-      l = Math.hypot(gx, gy, gz);
-      h[0] = gx / l; h[1] = gy / l; h[2] = gz / l;
+      w.move(p, SPEED * dt);
       // walk the grid cell by cell so trails stay connected
-      for (let guard = 0; guard < 16 && p.alive; guard++) {
-        const n = w.stepToward(d[0], d[1], d[2], p.cell);
-        if (n === p.cell) break;
+      const target = p.near, P = w.pos;
+      for (let guard = 0; guard < 12 && p.alive && p.cell !== target; guard++) {
+        let n = w.adjacent(p.cell, target) ? target : w.stepToward(P[target * 3], P[target * 3 + 1], P[target * 3 + 2], p.cell);
+        if (n === p.cell) n = target; // no downhill step left: hop (rare, on badly stretched cells)
         this._enter(p, n);
       }
     }

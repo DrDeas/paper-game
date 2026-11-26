@@ -17,6 +17,23 @@ Own **100% of the planet** and you win: a victory wave sweeps round the world, f
 chiptune fanfare plays. (Once a player holds 99.5% the last sliver falls to them automatically — there is
 no "outside" left to close a loop against.) Bots can win too.
 
+## Worlds
+
+23 worlds, picked from a swipeable row on the menu: Orb, Pebble, Dice, Peanut, Puppy, Teddy, Mushroom,
+Star, Pencil, Toy Car, Unicorn, Guitar, Pig, Cupcake, Horse, Lion, Alligator, Smiley, Saxophone, Teapot,
+Heart, Fist and Tooth. Every world has the same surface area and the same number of cells, so speed and
+territory percentages mean the same thing everywhere; only the terrain changes.
+
+To add or reshape one, describe it as a soft union of simple solids in `tools/shapes.mjs`, add it to
+`SHAPES` in `src/world.js`, and bake it:
+
+```bash
+node tools/bake-worlds.mjs teapot
+```
+
+The baker shrink-wraps the game's geodesic grid onto the shape and writes `worlds/<key>.bin` (about
+250 KB, fetched only when that world is chosen).
+
 ## Play with friends
 
 Press **Host a game**, then **Copy invite link** and send it to your friends (or read them the 5-character
@@ -63,7 +80,8 @@ moving you through space, and the sky stays fixed, which keeps it comfortable.
 
 ## How it works
 
-- `src/world.js` — a geodesic grid (~41k cells) wrapped around a star-shaped surface (Orb, Pebble, Dice, Peanut).
+- `src/world.js` — the grid: a geodesic mesh (~41k cells) whose vertices are positioned per world, plus walking straight lines (geodesics) across it.
+- `tools/` — the offline sculpting kit: signed-distance primitives, the shape definitions, and the baker.
 - `src/game.js` — the rules: trails, enclosure flood-fill (everything except the largest outside region is captured), eliminations, respawns.
 - `src/bots.js` — bot AI: box-shaped excursions, path-finding home that avoids their own trail, threat assessment, and hunting exposed trails.
 - `src/view.js` — rendering. Ownership lives in a float texture read by the planet shader, so captures cost one small texture upload; borders are anti-aliased and smoothed in the fragment shader. Also the zoom "rig" shared by desktop and XR.

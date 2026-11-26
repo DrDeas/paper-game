@@ -44,11 +44,7 @@ function pathHome(game, p) {
   return { dist: L, wp: chain[Math.max(0, L - 4)] };
 }
 
-function cellsBetween(w, d, c) {
-  const D = w.dirs;
-  const dot = D[c * 3] * d[0] + D[c * 3 + 1] * d[1] + D[c * 3 + 2] * d[2];
-  return Math.acos(Math.min(1, Math.max(-1, dot))) / w.cellAngle;
-}
+const cellsBetween = (w, pos, c) => w.cellsTo(pos, c);
 
 // nearest exposed enemy trail cell within `range` cells, or -1
 function findPrey(game, p, range) {
@@ -59,7 +55,7 @@ function findPrey(game, p, range) {
     const t = q.trailCells;
     if (t.length < 3) continue;
     for (let i = 0; i < t.length; i += 3) {
-      const dd = cellsBetween(w, p.d, t[i]);
+      const dd = cellsBetween(w, p.pos, t[i]);
       if (dd < bestD) { bestD = dd; best = t[i]; }
     }
   }
@@ -72,27 +68,27 @@ function threatDistance(game, p) {
   let best = 999;
   for (const q of game.players) {
     if (!q || !q.alive || q === p) continue;
-    let dd = cellsBetween(w, q.d, p.cell);
+    let dd = cellsBetween(w, q.pos, p.cell);
     if (dd > 60) continue;
-    for (let i = 0; i < t.length; i += 4) dd = Math.min(dd, cellsBetween(w, q.d, t[i]));
+    for (let i = 0; i < t.length; i += 4) dd = Math.min(dd, cellsBetween(w, q.pos, t[i]));
     if (dd < best) best = dd;
   }
   return best;
 }
 
 function tangentTo(w, p, c) {
-  const D = w.dirs;
-  return [D[c * 3] - p.d[0], D[c * 3 + 1] - p.d[1], D[c * 3 + 2] - p.d[2]];
+  const P = w.pos;
+  return [P[c * 3] - p.pos[0], P[c * 3 + 1] - p.pos[1], P[c * 3 + 2] - p.pos[2]];
 }
 
 function left(p) {
-  const d = p.d, h = p.h;
+  const d = p.n, h = p.h;
   return [d[1] * h[2] - d[2] * h[1], d[2] * h[0] - d[0] * h[2], d[0] * h[1] - d[1] * h[0]];
 }
 
 // would travelling along tangent direction `dir` run into our own trail soon?
 function blocked(game, p, dir) {
-  const w = game.world, d = p.d, t = p.trailCells, n = t.length;
+  const w = game.world, d = p.n, o = p.pos, t = p.trailCells, n = t.length;
   let x = dir[0], y = dir[1], z = dir[2];
   const k = x * d[0] + y * d[1] + z * d[2];
   x -= d[0] * k; y -= d[1] * k; z -= d[2] * k;
@@ -101,8 +97,8 @@ function blocked(game, p, dir) {
   x /= l; y /= l; z /= l;
   let c = p.cell;
   for (let i = 1; i <= 4; i++) {
-    const a = w.cellAngle * 1.3 * i, cs = Math.cos(a), sn = Math.sin(a);
-    c = w.locate(d[0] * cs + x * sn, d[1] * cs + y * sn, d[2] * cs + z * sn, c);
+    const a = w.cellLen * 1.3 * i;
+    c = w.locate(o[0] + x * a, o[1] + y * a, o[2] + z * a, c);
     if (game.trail[c] === p.id && c !== t[n - 1] && c !== t[n - 2] && c !== t[n - 3]) return true;
   }
   return false;

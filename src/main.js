@@ -1,4 +1,4 @@
-import { World, SHAPES } from './world.js';
+import { World, SHAPES, loadWorld } from './world.js';
 import { Game, HUMAN_ID } from './game.js';
 import { View, THREE, hex } from './view.js';
 import { sfx, unlockAudio } from './audio.js';
@@ -24,23 +24,74 @@ let playing = false, startedAt = 0;
 function buildWorld(key) {
   shapeKey = key;
   store.set('lp.shape', key);
-  world = new World(key, 6);
+  world = new World(key); // its data must already be loaded (see selectShape / loadWorld)
   game = new Game(world);
   me = game.players[myId];
   view.setWorld(world, game);
   if (role === 'host') rehost();
-  for (const b of $('shapes').children) b.classList.toggle('on', b.dataset.k === key);
+  markShape(key);
   if (window.__lp) Object.assign(window.__lp, { game, world });
 }
 
+// ---- world picker: a swipeable row ----
+const strip = $('shapes');
+let stripDragged = false;
 for (const [k, s] of Object.entries(SHAPES)) {
   const b = document.createElement('button');
-  b.textContent = s.name; b.dataset.k = k;
-  b.onclick = () => { if (!playing && role !== 'guest') buildWorld(k); };
-  $('shapes').append(b);
+  b.innerHTML = `<span class="ico">${s.icon}</span><span>${s.name}</span>`;
+  b.dataset.k = k; b.setAttribute('role', 'option');
+  b.onclick = () => { if (!stripDragged) selectShape(k); };
+  b.onpointerenter = () => { loadWorld(k).catch(() => {}); }; // warm it up before the click
+  strip.append(b);
 }
+function markShape(key, smooth = true) {
+  for (const b of strip.children) {
+    const on = b.dataset.k === key;
+    b.classList.toggle('on', on); b.setAttribute('aria-selected', on);
+    if (on) strip.scrollTo({ left: b.offsetLeft - (strip.clientWidth - b.offsetWidth) / 2, behavior: smooth ? 'smooth' : 'auto' });
+  }
+}
+const stripNav = () => {
+  $('shapePrev').hidden = strip.scrollLeft < 8;
+  $('shapeNext').hidden = strip.scrollLeft > strip.scrollWidth - strip.clientWidth - 8;
+};
+strip.addEventListener('scroll', stripNav, { passive: true });
+$('shapePrev').onclick = () => strip.scrollBy({ left: -strip.clientWidth * 0.75, behavior: 'smooth' });
+$('shapeNext').onclick = () => strip.scrollBy({ left: strip.clientWidth * 0.75, behavior: 'smooth' });
+// mouse users can grab and fling the row too (touch scrolls natively)
+strip.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const x0 = e.clientX, s0 = strip.scrollLeft;
+  stripDragged = false;
+  const moveTo = (ev) => {
+    if (Math.abs(ev.clientX - x0) > 6) { stripDragged = true; strip.classList.add('dragging'); }
+    if (stripDragged) strip.scrollLeft = s0 - (ev.clientX - x0);
+  };
+  const up = () => {
+    removeEventListener('pointermove', moveTo); removeEventListener('pointerup', up);
+    strip.classList.remove('dragging');
+    setTimeout(() => { stripDragged = false; }, 0); // let the click that follows a drag be ignored
+  };
+  addEventListener('pointermove', moveTo); addEventListener('pointerup', up);
+});
 $('name').value = store.get('lp.name', '');
+
+// switch planet from the menu: fetch its data first, keep showing the old one meanwhile
+let wantShape = shapeKey;
+async function selectShape(k) {
+  if (playing || role === 'guest' || !SHAPES[k]) return;
+  wantShape = k;
+  const chip = [...$('shapes').children].find((b) => b.dataset.k === k);
+  chip?.classList.add('loading');
+  try { await loadWorld(k); } catch { chip?.classList.remove('loading'); return; }
+  chip?.classList.remove('loading');
+  if (wantShape === k && !playing && role !== 'guest' && world.shapeKey !== k) buildWorld(k);
+  else if (wantShape === k) markShape(world.shapeKey);
+}
+
+try { await loadWorld(shapeKey); } catch { shapeKey = 'orb'; }
 buildWorld(shapeKey);
+markShape(shapeKey, false); stripNav();
 window.__lp = { game, world, view };
 
 function start() {
@@ -113,8 +164,8 @@ function celebrate(dt) {
   if (partyAt > 0) return;
   partyAt = 0.08;
   // fireworks popping all over the planet in every player colour
-  const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
-  view.burst([r * Math.cos(a), u, r * Math.sin(a)], 1 + ((Math.random() * 12) | 0), 60, 0.32);
+  const v = ((Math.random() * world.V) | 0) * 3;
+  view.burst(world.pos.subarray(v, v + 3), world.normals.subarray(v, v + 3), 1 + ((Math.random() * 12) | 0), 60, 0.32);
 }
 
 // ---------------------------------------------------------------- multiplayer
@@ -122,6 +173,7 @@ function celebrate(dt) {
 // host's state. See net.js for the wire format.
 const net = new Net(params.get('signal'));
 const seats = new Map(); // host: connection id -> seat
+let adopting = null; // guest: updates queued while a new planet's shape downloads
 let hostSync = null, guestSync = null, joinPending = false, guestWant = null, netAt = 0, pruneAt = 0;
 
 function mpShow(which, hint = '') {
@@ -193,8 +245,15 @@ async function joinGame(raw) {
   net.onOpen = () => {};
   net.onMessage = (m) => {
     if (!m) return;
-    if (m.k === 'init') adopt(m);
-    else if (m.k === 's') guestSync?.receive(m);
+    if (m.k === 'init') { // a (new) planet: load its shape, holding later updates until it is up
+      const q = (adopting = []);
+      loadWorld(m.shape).then(() => {
+        if (adopting !== q) return; // superseded by a newer planet
+        adopt(m);
+        adopting = null;
+        for (const later of q) guestSync.receive(later);
+      }, () => goSolo('Could not load that world.'));
+    } else if (m.k === 's') { if (adopting) adopting.push(m); else guestSync?.receive(m); }
     else if (m.k === 'full') goSolo(`That game is full (${MAX_GUESTS + 1} people).`);
   };
   net.onClose = (reason) => goSolo(reason);
@@ -205,13 +264,13 @@ async function joinGame(raw) {
 function adopt(m) {
   role = 'guest';
   myId = m.you;
-  world = new World(m.shape, 6);
+  world = new World(m.shape);
   game = new Game(world);
   me = game.players[myId];
   view.setWorld(world, game);
   guestSync = new GuestSync(game, m);
   m.trails.forEach((cells, i) => view.seedTrail(i + 1, cells));
-  for (const b of $('shapes').children) b.classList.toggle('on', b.dataset.k === m.shape);
+  markShape(m.shape);
   Object.assign(window.__lp, { game, world });
   $('banner').hidden = true; party = 0;
   if (joinPending) startedAt = game.time;
@@ -224,7 +283,7 @@ function goSolo(hint = '') {
   net.close();
   for (const seat of seats.values()) game.releaseSeat(seat);
   seats.clear();
-  role = 'solo'; guestSync = null; hostSync = null; joinPending = false;
+  role = 'solo'; guestSync = null; hostSync = null; joinPending = false; adopting = null;
   for (const b of $('shapes').children) b.disabled = false;
   if (was === 'guest' || myId !== HUMAN_ID) {
     myId = HUMAN_ID; playing = false;
@@ -321,7 +380,16 @@ canvas.addEventListener('pointerdown', (e) => {
 const endTouch = (e) => { touches.delete(e.pointerId); pinch = 0; };
 canvas.addEventListener('pointerup', endTouch);
 canvas.addEventListener('pointercancel', endTouch);
-addEventListener('wheel', (e) => { e.preventDefault(); setZoom(view.zoomTarget + e.deltaY * 0.0011); }, { passive: false });
+addEventListener('wheel', (e) => {
+  if (e.target.closest?.('#shapes')) { // over the world picker: scroll it sideways
+    e.preventDefault();
+    strip.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    return;
+  }
+  if (!playing && e.target.closest?.('.card')) return; // let the menu scroll normally
+  e.preventDefault();
+  setZoom(view.zoomTarget + e.deltaY * 0.0011);
+}, { passive: false });
 $('zoomIn').onclick = () => setZoom(view.zoomTarget - 0.25);
 $('zoomOut').onclick = () => setZoom(view.zoomTarget + 0.25);
 
@@ -487,7 +555,7 @@ function handleEvents() {
     if (e.type === 'capture') {
       if (e.id === myId) {
         sfx.capture(e.gained);
-        view.burst(e.d, e.id, Math.min(60, 10 + e.gained / 8), 0.1);
+        view.burst(e.d, e.n, e.id, Math.min(60, 10 + e.gained / 8), 0.1);
         const gain = (e.gained / world.V) * 100;
         if (gain >= 0.1) toast('+' + gain.toFixed(1) + '%', hex(myId));
       }
@@ -499,7 +567,7 @@ function handleEvents() {
         toast('Cut off! −' + ((e.lost / world.V) * 100).toFixed(1) + '%', '#ff9bb3');
       }
     } else if (e.type === 'death') {
-      view.burst(e.d, e.id, 70, 0.16);
+      view.burst(e.d, e.n, e.id, 70, 0.16);
       if (e.id === myId) { sfx.death(); gameOver(e); }
       else if (e.by === myId) {
         sfx.kill();
@@ -549,7 +617,8 @@ view.renderer.setAnimationLoop((now) => {
   if (!playing && !view.inXR) view.zoomTarget = 1;
   view.menuShiftTarget = $('menu').classList.contains('hide') ? 0 : 1;
   const leader = me.alive ? me : game.standings()[0];
-  view.update(dt, leader ? leader.d : null);
+  view.turntable = !playing && !game.winner;
+  view.update(dt, leader || null);
   if (now > hudAt) { hudAt = now + 200; updateHud(); }
   view.render();
 });

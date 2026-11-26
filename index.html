@@ -40,7 +40,11 @@
       </div>
     </div>
     <input id="name" maxlength="14" placeholder="Your name" autocomplete="off" spellcheck="false">
-    <div class="chips" id="shapes"></div>
+    <div class="carousel">
+      <button class="nav prev" id="shapePrev" aria-label="Previous worlds" hidden>&lsaquo;</button>
+      <div id="shapes" role="listbox" aria-label="Choose a world"></div>
+      <button class="nav next" id="shapeNext" aria-label="More worlds">&rsaquo;</button>
+    </div>
     <button id="play" class="primary">Play</button>
     <div class="mp">
       <div class="mpRow" id="mpIdle">

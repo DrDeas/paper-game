@@ -2,6 +2,7 @@
 // and the "rig" that keeps the followed player in front of the viewer at any zoom.
 import * as THREE from '../vendor/three.module.min.js';
 import { PALETTE, MAX_PLAYERS } from './game.js';
+import { SHAPES } from './world.js';
 
 const TEX_W = 256;
 const S_NEAR = 14;     // planet radius in metres when fully zoomed in
@@ -9,12 +10,12 @@ const S_FAR = 0.45;    // ...and when it's a globe in front of you
 const LIFT = 0.007;    // how far claimed land rises off the surface
 const FONT = 'ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif';
 
-const THEMES = {
-  orb: { base: 0x2b3268, rim: 0x6fb7ff, skyTop: 0x0b1030, skyBot: 0x2a1650 },
-  pebble: { base: 0x1f4a54, rim: 0x7dffd9, skyTop: 0x061a26, skyBot: 0x10314a },
-  dice: { base: 0x4a2a5c, rim: 0xff9ad8, skyTop: 0x1a0b2c, skyBot: 0x3a1238 },
-  peanut: { base: 0x3a3f5e, rim: 0xffd28a, skyTop: 0x0d1024, skyBot: 0x2b2140 },
-};
+// each world gets a colour mood derived from one hue
+function themeFor(shape) {
+  const h = (((shape && shape.hue) ?? 232) + 360) % 360;
+  const c = (dh, sat, lit) => new THREE.Color().setHSL((((h + dh) % 360) + 360) % 360 / 360, sat, lit, THREE.SRGBColorSpace);
+  return { base: c(0, 0.34, 0.36), rim: c(8, 0.95, 0.74), skyTop: c(18, 0.5, 0.07), skyBot: c(-28, 0.45, 0.13) };
+}
 
 const planetVert = /* glsl */ `
 uniform highp sampler2D uData;
@@ -118,9 +119,11 @@ void main() {
   vec3 N = normalize(vN);
   vec3 V = normalize(cameraPosition - vWPos);
   float ndl = dot(N, uLight);
-  float diff = 0.62 + 0.38 * smoothstep(-0.35, 0.9, ndl);
+  // sculpted worlds need real light and shade to read as solid forms
+  float diff = 0.42 + 0.62 * smoothstep(-0.45, 0.95, ndl);
+  diff *= 0.82 + 0.18 * smoothstep(-0.6, 0.6, N.y);
   float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-  col = col * diff + uRim * fres * 0.45;
+  col = col * diff + uRim * fres * 0.3;
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }`;
@@ -128,16 +131,16 @@ void main() {
 const haloVert = /* glsl */ `
 varying vec3 vN; varying vec3 vWPos;
 void main() {
-  vec4 wp = modelMatrix * vec4(position + normal * 0.075, 1.0);
+  vec4 wp = modelMatrix * vec4(position + normal * 0.032, 1.0);
   vWPos = wp.xyz; vN = normalize(mat3(modelMatrix) * normal);
   gl_Position = projectionMatrix * viewMatrix * wp;
 }`;
 const haloFrag = /* glsl */ `
-uniform vec3 uRim; varying vec3 vN; varying vec3 vWPos;
+uniform vec3 uRim; uniform float uGlow; varying vec3 vN; varying vec3 vWPos;
 void main() {
   vec3 V = normalize(cameraPosition - vWPos);
-  float k = smoothstep(0.0, 0.38, -dot(normalize(vN), V));
-  gl_FragColor = vec4(uRim * k * k * k * 0.32, 1.0);
+  float k = smoothstep(0.0, 0.3, -dot(normalize(vN), V));
+  gl_FragColor = vec4(uRim * k * k * k * uGlow, 1.0);
   #include <colorspace_fragment>
 }`;
 
@@ -196,7 +199,7 @@ class Ribbon {
       this.write(i, P, N, h);
     }
     this.n = n - 1;
-    const d = world.dirs, l = cells[n - 1] * 3;
+    const d = world.pos, l = cells[n - 1] * 3;
     this.last[0] = d[l]; this.last[1] = d[l + 1]; this.last[2] = d[l + 2];
     this.attr.clearUpdateRanges();
     this.attr.needsUpdate = true;
@@ -208,7 +211,7 @@ class Ribbon {
       if (this.n) { this.n = 0; g.setDrawRange(0, 0); }
       return;
     }
-    const d = p.d;
+    const d = p.pos;
     let from = this.n;
     if (this.n === 0) {
       this.write(0, P, N, p.h);
@@ -216,8 +219,8 @@ class Ribbon {
       from = 0;
     }
     this.write(this.n, P, N, p.h);
-    const dot = d[0] * this.last[0] + d[1] * this.last[1] + d[2] * this.last[2];
-    if (dot < 0.999975 && this.n < RIBBON_MAX - 1) { // ~0.4 degrees
+    const moved = Math.hypot(d[0] - this.last[0], d[1] - this.last[1], d[2] - this.last[2]);
+    if (moved > 0.007 && this.n < RIBBON_MAX - 1) {
       this.n++;
       this.write(this.n, P, N, p.h);
       this.last[0] = d[0]; this.last[1] = d[1]; this.last[2] = d[2];
@@ -369,8 +372,13 @@ export class View {
     // rig state
     this.zoom = 0.3; this.zoomTarget = 0.3;
     this.menuShift = 0; this.menuShiftTarget = 0;
-    this.focus = new THREE.Vector3(0, 1, 0);
-    this.up = new THREE.Vector3(0, 0, -1);
+    this.focus = new THREE.Vector3(0, 0, 1);   // followed point on the surface (planet space)
+    this.fnorm = new THREE.Vector3(0, 0, 1);   // ...and the surface normal there
+    this.axis = new THREE.Vector3(0, 0, 1);
+    this.up = new THREE.Vector3(0, 1, 0);
+    this.planeN = new THREE.Vector3(0, 1, 0);
+    this.turntable = false; this.spin = 0.6; this.follow = 0;
+    this._qa = new THREE.Quaternion(); this._qb = new THREE.Quaternion(); this._yAxis = new THREE.Vector3(0, 1, 0);
     this.scale = 1;
     this.rigN = new THREE.Vector3(); this.rigU = new THREE.Vector3(); this.rigR = new THREE.Vector3();
     this.anchor = new THREE.Vector3();
@@ -397,7 +405,8 @@ export class View {
 
   setWorld(world, game) {
     this.world = world; this.game = game;
-    const theme = THEMES[world.shapeKey] || THEMES.orb;
+    const theme = themeFor(SHAPES[world.shapeKey]);
+    this.spin = 0.6; this.follow = 0;
     // dispose the previous world
     for (const o of this.worldObjects || []) {
       o.parent && o.parent.remove(o);
@@ -442,16 +451,17 @@ export class View {
     hg.setAttribute('normal', new THREE.BufferAttribute(world.normals, 3));
     hg.setIndex(new THREE.BufferAttribute(world.tris, 1));
     const halo = new THREE.Mesh(hg, new THREE.ShaderMaterial({
-      uniforms: { uRim: { value: new THREE.Color(theme.rim) } },
+      uniforms: { uRim: { value: new THREE.Color(theme.rim) }, uGlow: { value: 0.15 } },
       vertexShader: haloVert, fragmentShader: haloFrag,
       side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
     }));
     halo.frustumCulled = false;
+    this.halo = halo;
     this.planet.add(halo);
     this.worldObjects.push(halo);
 
-    this.skyMat.uniforms.uTop.value.set(theme.skyTop);
-    this.skyMat.uniforms.uBot.value.set(theme.skyBot);
+    this.skyMat.uniforms.uTop.value.copy(theme.skyTop);
+    this.skyMat.uniforms.uBot.value.copy(theme.skyBot);
 
     this.avatars = [null]; this.ribbons = [null]; this.labels = [null];
     for (let id = 1; id <= MAX_PLAYERS; id++) {
@@ -469,9 +479,7 @@ export class View {
 
   seedTrail(id, cells) { this.ribbons[id].seed(this.world, cells); }
 
-  burst(d, colorId, count, speed = 0.12) {
-    const P = this._P, N = this._N;
-    this.world.surface(d, P, N);
+  burst(P, N, colorId, count, speed = 0.12) {
     const c = new THREE.Color(PALETTE[colorId]).lerp(new THREE.Color(0xffffff), 0.25);
     for (let i = 0; i < count; i++) {
       const k = this.pNext; this.pNext = (k + 1) % PARTICLES;
@@ -492,7 +500,7 @@ export class View {
 
   // heading (planet space) from a world-space ray: go toward where the ray meets the ground
   headingFromRay(origin, dir) {
-    const N = this._v2.copy(this.rigN).applyQuaternion(this.stage.quaternion);
+    const N = this._v2.copy(this.planeN).applyQuaternion(this.stage.quaternion);
     const A = this._v3.copy(this.anchor).applyMatrix4(this.stage.matrixWorld);
     const denom = dir.dot(N);
     const v = this._v;
@@ -510,33 +518,53 @@ export class View {
     return [v.x, v.y, v.z];
   }
 
-  updateRig(dt, focusDir) {
+  // focus = { pos, n }: the surface point to follow and its normal (planet space)
+  updateRig(dt, focus) {
     this.zoom += (this.zoomTarget - this.zoom) * Math.min(1, dt * 7);
     const z = this.zoom, e = z * z * (3 - 2 * z);
-    const f = this.focus;
-    if (focusDir) {
-      this._v.set(focusDir[0], focusDir[1], focusDir[2]);
-      if (f.dot(this._v) < -0.2) f.addScaledVector(this.up, 0.3); // avoid stalling at the antipode
-      f.lerp(this._v, Math.min(1, dt * 9)).normalize();
+    const f = this.focus, fn = this.fnorm;
+    if (focus) {
+      f.lerp(this._v.fromArray(focus.pos), Math.min(1, dt * 9));
+      fn.lerp(this._v.fromArray(focus.n), Math.min(1, dt * 6));
+      if (fn.lengthSq() < 1e-6) fn.fromArray(focus.n);
+      fn.normalize();
     }
-    this.up.addScaledVector(f, -this.up.dot(f));
-    if (this.up.lengthSq() < 1e-6) this.up.set(f.y, f.z, f.x).addScaledVector(f, -this.up.dot(f));
+    // "up" for the viewer: the ground's normal when close, the outward direction when
+    // looking at the whole world (so the side the player is on faces the viewer)
+    const axis = this.axis.copy(fn).multiplyScalar(1 - e);
+    if (f.lengthSq() > 1e-4) axis.addScaledVector(this._v.copy(f).normalize(), e);
+    if (axis.lengthSq() < 1e-6) axis.copy(fn);
+    axis.normalize();
+    this.up.addScaledVector(axis, -this.up.dot(axis));
+    if (this.up.lengthSq() < 1e-6) this.up.set(axis.y, axis.z, axis.x).addScaledVector(axis, -this.up.dot(axis));
     this.up.normalize();
-    const s = (this.scale = Math.exp(Math.log(S_NEAR) * (1 - z) + Math.log(S_FAR) * z));
+    // zoomed out, the whole world (whatever its proportions) fits the same bubble
+    const sFar = (S_FAR * 1.45) / Math.max(1.45, this.world.extent);
+    const s = (this.scale = Math.exp(Math.log(S_NEAR) * (1 - z) + Math.log(sFar) * z));
     const N = this.rigN.set(0, 1 - e + 0.4 * e, e).normalize();
     const U = this.rigU.set(0, 0, -1).addScaledVector(N, N.z).normalize();
     const R = this.rigR.crossVectors(U, N);
-    // globe centre when zoomed out, avatar a few steps ahead when zoomed in
-    this.anchor.set(0, 1.15 * e + N.y * S_FAR * e, -2.6 * (1 - e) + (-1.25 + N.z * S_FAR) * e);
-    const r = this._v.crossVectors(this.up, f);
+    const r = this._v.crossVectors(this.up, axis);
     this._m1.makeBasis(R, N, U);
-    this._m2.makeBasis(r, f, this.up).transpose();
+    this._m2.makeBasis(r, axis, this.up).transpose();
     this._m1.multiply(this._m2);
-    this.planet.quaternion.setFromRotationMatrix(this._m1);
+    const q = this._qa.setFromRotationMatrix(this._m1);
+    // menu: a slow upright turntable instead of chasing a player
+    this.spin += dt * 0.35;
+    this.follow += ((this.turntable && !this.inXR ? 0 : 1) - this.follow) * Math.min(1, dt * 4);
+    if (this.follow < 0.999) {
+      const k = this.follow * this.follow * (3 - 2 * this.follow);
+      q.copy(this._qb.setFromAxisAngle(this._yAxis, this.spin).slerp(q, k));
+    }
+    this.planet.quaternion.copy(q);
     this.planet.scale.setScalar(s);
-    const rad = this.world.shape.r(f.x, f.y, f.z) * (1 - e) + e;
-    this._v2.copy(f).multiplyScalar(rad * s).applyQuaternion(this.planet.quaternion);
-    this.planet.position.copy(this.anchor).sub(this._v2);
+    // close up the followed point sits a few steps ahead; zoomed out the world's centre floats in front
+    const keep = (1 - e) * this.follow;
+    this._v2.copy(f).multiplyScalar(keep * s).applyQuaternion(q);
+    this.planet.position.set(0, 1.15 * e, -2.6 * (1 - e) - 1.25 * e).sub(this._v2);
+    // where the followed point and its ground plane ended up (used to aim pointer steering)
+    this.anchor.copy(f).multiplyScalar(s).applyQuaternion(q).add(this.planet.position);
+    this.planeN.copy(fn).applyQuaternion(q);
     if (!this.inXR) {
       this.camera.position.set(0, 2.1 - 0.6 * e, 1.3 - 0.9 * e);
       this._v.set(0, 1.15 * e, -3.4 * (1 - e) - 1.25 * e);
@@ -550,10 +578,12 @@ export class View {
     }
   }
 
-  update(dt, focusDir) {
+  update(dt, focus) {
     const game = this.game, world = this.world;
-    this.updateRig(dt, focusDir);
+    this.updateRig(dt, focus);
     this.planetMat.uniforms.uTime.value = game.time;
+    // the outline glow suits the far view; up close it would wash over nearby limbs
+    this.halo.material.uniforms.uGlow.value = 0.04 + 0.13 * this.zoom * this.zoom;
     if (game.dirty) {
       const d = this.data, o = game.owner, t = game.capTime;
       const nb = world.nbr;
@@ -566,12 +596,12 @@ export class View {
       game.dirty = false;
     }
     this.planet.updateMatrixWorld(true);
-    const P = this._P, N = this._N, s = this.scale;
+    const s = this.scale;
     const leader = game.standings()[0];
     const labelW = 0.26 * Math.pow(s, 0.55);
     for (let id = 1; id <= MAX_PLAYERS; id++) {
       const p = game.players[id], av = this.avatars[id], lb = this.labels[id];
-      world.surface(p.d, P, N);
+      const P = p.pos, N = p.n;
       this.ribbons[id].update(p, P, N);
       av.visible = lb.sprite.visible = p.alive;
       if (!p.alive) continue;

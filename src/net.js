@@ -6,7 +6,7 @@ import { MAX_PLAYERS } from './game.js';
 const PREFIX = 'lasso-planet-v1-';
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no lookalikes (0/O, 1/I)
 export const MAX_GUESTS = 7;
-const FIELDS = 10; // per player: alive, d xyz, h xyz, trail length, land count, kills
+const FIELDS = 13; // per player: alive, position, heading, surface normal, trail length, land count, kills
 
 export const cleanCode = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
 
@@ -140,9 +140,10 @@ export function packPlayers(game) {
   for (let id = 1; id <= MAX_PLAYERS; id++) {
     const p = game.players[id], o = (id - 1) * FIELDS;
     a[o] = p.alive ? 1 : 0;
-    a[o + 1] = p.d[0]; a[o + 2] = p.d[1]; a[o + 3] = p.d[2];
+    a[o + 1] = p.pos[0]; a[o + 2] = p.pos[1]; a[o + 3] = p.pos[2];
     a[o + 4] = p.h[0]; a[o + 5] = p.h[1]; a[o + 6] = p.h[2];
-    a[o + 7] = p.trailCells.length; a[o + 8] = p.count; a[o + 9] = p.kills;
+    a[o + 7] = p.n[0]; a[o + 8] = p.n[1]; a[o + 9] = p.n[2];
+    a[o + 10] = p.trailCells.length; a[o + 11] = p.count; a[o + 12] = p.kills;
   }
   return a;
 }
@@ -228,17 +229,17 @@ export class GuestSync {
       const alive = B[o] > 0.5;
       if (alive && !p.alive) p.spawnTime = g.time;
       p.alive = alive;
-      p.trailCells.length = B[o + 7]; p.count = B[o + 8]; p.kills = B[o + 9];
+      p.trailCells.length = B[o + 10]; p.count = B[o + 11]; p.kills = B[o + 12];
       if (p.count > p.best) p.best = p.count;
       if (!alive) { p.best = 0; continue; }
       // blend only while the two samples describe the same continuous path
-      const same = A[o] > 0.5 && A[o + 1] * B[o + 1] + A[o + 2] * B[o + 2] + A[o + 3] * B[o + 3] > 0.98;
-      for (const [vec, at] of [[p.d, 1], [p.h, 4]]) {
+      const same = A[o] > 0.5 && Math.hypot(A[o + 1] - B[o + 1], A[o + 2] - B[o + 2], A[o + 3] - B[o + 3]) < 0.15;
+      for (const [vec, at, unit] of [[p.pos, 1, false], [p.h, 4, true], [p.n, 7, true]]) {
         let x = B[o + at], y = B[o + at + 1], z = B[o + at + 2];
         if (same) {
           x = A[o + at] + (x - A[o + at]) * k; y = A[o + at + 1] + (y - A[o + at + 1]) * k; z = A[o + at + 2] + (z - A[o + at + 2]) * k;
         }
-        const l = Math.hypot(x, y, z) || 1;
+        const l = unit ? Math.hypot(x, y, z) || 1 : 1;
         vec[0] = x / l; vec[1] = y / l; vec[2] = z / l;
       }
     }
