@@ -19,9 +19,9 @@ no "outside" left to close a loop against.) Bots can win too.
 
 ## Worlds
 
-23 worlds, picked from a swipeable row on the menu: Orb, Pebble, Dice, Peanut, Puppy, Teddy, Mushroom,
-Star, Pencil, Toy Car, Unicorn, Guitar, Pig, Cupcake, Horse, Lion, Alligator, Smiley, Saxophone, Teapot,
-Heart, Fist and Tooth. Every world has the same surface area and the same number of cells, so speed and
+20 worlds, picked from an endlessly swipeable row on the menu: Orb, Pebble, Dice, Peanut, Puppy, Teddy,
+Mushroom, Star, Pencil, Toy Car, Unicorn, Guitar, Pig, Cupcake, Horse, Lion, Alligator, Smiley, Teapot
+and Tooth. Every world has the same surface area and the same number of cells, so speed and
 territory percentages mean the same thing everywhere; only the terrain changes.
 
 To add or reshape one, describe it as a soft union of simple solids in `tools/shapes.mjs`, add it to

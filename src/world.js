@@ -36,10 +36,7 @@ export const SHAPES = {
   lion: { name: 'Lion', icon: '🦁', hue: 36 },
   alligator: { name: 'Alligator', icon: '🐊', hue: 130 },
   smiley: { name: 'Smiley', icon: '😀', hue: 50 },
-  saxophone: { name: 'Saxophone', icon: '🎷', hue: 44 },
   teapot: { name: 'Teapot', icon: '🫖', hue: 200 },
-  heart: { name: 'Heart', icon: '❤️', hue: 350 },
-  fist: { name: 'Fist', icon: '✊🏾', hue: 24 },
   tooth: { name: 'Tooth', icon: '🦷', hue: 210 },
 };
 

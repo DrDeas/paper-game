@@ -145,16 +145,6 @@ export const SCULPTS = {
       return [x, y, z, 0.14];
     }))),
 
-  // chunky J-shaped horn with a flared bell
-  saxophone: carve(0.06, union(0.07,
-    tube(0.06, [
-      [-0.5, 1.95, 0, 0.14], [-0.15, 1.82, 0, 0.15], [0.2, 1.55, 0, 0.16], [0.26, 1.1, 0, 0.18],
-      [0.26, -0.55, 0, 0.25], [0.14, -1.02, 0, 0.29], [-0.24, -1.3, 0, 0.32], [-0.68, -1.12, 0, 0.35],
-      [-0.9, -0.62, 0, 0.42], [-0.98, -0.2, 0, 0.5],
-    ]),
-    ...[0.9, 0.55, 0.2, -0.15].map((y) => sphere(0.26, y, 0.24, 0.11))),   // keys
-    sphere(-1.02, 0.72, 0, 0.55)),                                         // dished mouth of the bell
-
   teapot: union(0.07,
     ellipsoid(0, 0, 0, 0.95, 0.75, 0.95),
     cylinder(0, -0.72, 0, 'y', 0.55, 0.07, 0.05),                          // foot
@@ -163,21 +153,6 @@ export const SCULPTS = {
     tube(0.06, [[0.8, -0.15, 0, 0.23], [1.3, 0.18, 0, 0.17], [1.56, 0.6, 0, 0.14]]), // spout
     // the handle is a solid ear with a thumb-dimple each side (no through-hole)
     carve(0.08, ellipsoid(-1.08, 0.02, 0, 0.5, 0.52, 0.17), sphere(-1.12, 0.02, 0.36, 0.27), sphere(-1.12, 0.02, -0.36, 0.27))),
-
-  heart: scale(union(0.3,
-    mirrorX(sphere(0.46, 0.42, 0, 0.6)),
-    mirrorX(capsule([0.42, 0.3, 0], [0, -0.95, 0], 0.5, 0.16)),
-    ellipsoid(0, -0.1, 0, 0.45, 0.55, 0.5)), 1, 1, 0.78),
-
-  // raised fist: fingers curled over the palm, thumb across them, wrist below
-  fist: union(0.07,
-    box(0, 0, 0, 0.62, 0.52, 0.4, 0.26),
-    ...[-0.48, -0.16, 0.16, 0.48].flatMap((x) => [
-      sphere(x, 0.52, 0.12, 0.2),                                          // knuckle
-      capsule([x, 0.45, 0.3], [x, -0.12, 0.5], 0.19, 0.18),                // curled finger
-    ]),
-    capsule([0.6, 0.0, 0.3], [-0.12, -0.28, 0.66], 0.21, 0.18),            // thumb
-    box(0, -1.0, -0.02, 0.44, 0.55, 0.3, 0.22)),                           // wrist
 
   // molar: knobbly crown, two tapering roots
   tooth: union(0.12,

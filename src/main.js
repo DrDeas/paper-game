@@ -33,43 +33,76 @@ function buildWorld(key) {
   if (window.__lp) Object.assign(window.__lp, { game, world });
 }
 
-// ---- world picker: a swipeable row ----
+// ---- world picker: an endless swipeable row ----
+// The list is laid out several times over and the scroll position is quietly moved
+// back to the middle copy whenever it comes to rest, so it never reaches an end.
 const strip = $('shapes');
-let stripDragged = false;
-for (const [k, s] of Object.entries(SHAPES)) {
-  const b = document.createElement('button');
-  b.innerHTML = `<span class="ico">${s.icon}</span><span>${s.name}</span>`;
-  b.dataset.k = k; b.setAttribute('role', 'option');
-  b.onclick = () => { if (!stripDragged) selectShape(k); };
-  b.onpointerenter = () => { loadWorld(k).catch(() => {}); }; // warm it up before the click
-  strip.append(b);
+const COPIES = 5, MID = (COPIES - 1) / 2, shapeKeys = Object.keys(SHAPES);
+let stripDragged = false, stripHeld = false, stripShift = 0, stripIdle = 0;
+for (let copy = 0; copy < COPIES; copy++) {
+  for (const k of shapeKeys) {
+    const s = SHAPES[k], b = document.createElement('button');
+    b.innerHTML = `<span class="ico">${s.icon}</span><span>${s.name}</span>`;
+    b.dataset.k = k; b.setAttribute('role', 'option');
+    if (copy !== MID) { b.tabIndex = -1; b.setAttribute('aria-hidden', 'true'); } // keyboard and screen readers see one list
+    b.onclick = () => { if (!stripDragged) selectShape(k); };
+    b.onpointerenter = () => { loadWorld(k).catch(() => {}); }; // warm it up before the click
+    strip.append(b);
+  }
 }
+const chipsFor = (key) => [...strip.children].filter((b) => b.dataset.k === key);
+const setWidth = () => strip.children[shapeKeys.length].offsetLeft - strip.children[0].offsetLeft;
+// jump by whole list-lengths (the copies are identical, so the jump cannot be seen)
+function stripWrap(toMiddle) {
+  const w = setWidth();
+  if (!w) return;
+  const x = strip.scrollLeft;
+  let sets = 0;
+  if (toMiddle) sets = MID - Math.floor((x + strip.clientWidth / 2) / w);   // re-centre on the middle copy
+  else if (x < w * 0.5) sets = 1;                                           // safety net near either end
+  else if (x > w * (COPIES - 1.5) - strip.clientWidth) sets = -1;
+  if (!sets) return;
+  const snap = strip.style.scrollSnapType, smooth = strip.style.scrollBehavior;
+  strip.style.scrollSnapType = 'none'; strip.style.scrollBehavior = 'auto';
+  strip.scrollLeft = x + sets * w;
+  strip.style.scrollSnapType = snap; strip.style.scrollBehavior = smooth;
+  stripShift += sets * w;
+}
+strip.addEventListener('scroll', () => {
+  stripWrap(false);
+  clearTimeout(stripIdle);
+  stripIdle = setTimeout(() => { if (!stripHeld) stripWrap(true); }, 140);
+}, { passive: true });
 function markShape(key, smooth = true) {
   for (const b of strip.children) {
     const on = b.dataset.k === key;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on);
-    if (on) strip.scrollTo({ left: b.offsetLeft - (strip.clientWidth - b.offsetWidth) / 2, behavior: smooth ? 'smooth' : 'auto' });
   }
+  if (!smooth) stripWrap(true);
+  // glide to whichever copy of the chosen tile is closest to what is on screen
+  const centre = strip.scrollLeft + strip.clientWidth / 2;
+  let best = null, bestD = Infinity;
+  for (const b of chipsFor(key)) {
+    const d = Math.abs(b.offsetLeft + b.offsetWidth / 2 - centre);
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  if (best) strip.scrollTo({ left: best.offsetLeft - (strip.clientWidth - best.offsetWidth) / 2, behavior: smooth ? 'smooth' : 'auto' });
 }
-const stripNav = () => {
-  $('shapePrev').hidden = strip.scrollLeft < 8;
-  $('shapeNext').hidden = strip.scrollLeft > strip.scrollWidth - strip.clientWidth - 8;
-};
-strip.addEventListener('scroll', stripNav, { passive: true });
+$('shapePrev').hidden = false;
 $('shapePrev').onclick = () => strip.scrollBy({ left: -strip.clientWidth * 0.75, behavior: 'smooth' });
 $('shapeNext').onclick = () => strip.scrollBy({ left: strip.clientWidth * 0.75, behavior: 'smooth' });
 // mouse users can grab and fling the row too (touch scrolls natively)
 strip.addEventListener('pointerdown', (e) => {
   if (e.pointerType !== 'mouse') return;
   const x0 = e.clientX, s0 = strip.scrollLeft;
-  stripDragged = false;
+  stripDragged = false; stripHeld = true; stripShift = 0;
   const moveTo = (ev) => {
     if (Math.abs(ev.clientX - x0) > 6) { stripDragged = true; strip.classList.add('dragging'); }
-    if (stripDragged) strip.scrollLeft = s0 - (ev.clientX - x0);
+    if (stripDragged) strip.scrollLeft = s0 + stripShift - (ev.clientX - x0); // stripShift: wraps made mid-drag
   };
   const up = () => {
     removeEventListener('pointermove', moveTo); removeEventListener('pointerup', up);
-    strip.classList.remove('dragging');
+    strip.classList.remove('dragging'); stripHeld = false;
     setTimeout(() => { stripDragged = false; }, 0); // let the click that follows a drag be ignored
   };
   addEventListener('pointermove', moveTo); addEventListener('pointerup', up);
@@ -81,17 +114,18 @@ let wantShape = shapeKey;
 async function selectShape(k) {
   if (playing || role === 'guest' || !SHAPES[k]) return;
   wantShape = k;
-  const chip = [...$('shapes').children].find((b) => b.dataset.k === k);
-  chip?.classList.add('loading');
-  try { await loadWorld(k); } catch { chip?.classList.remove('loading'); return; }
-  chip?.classList.remove('loading');
+  const chips = chipsFor(k);
+  for (const c of chips) c.classList.add('loading');
+  try { await loadWorld(k); } catch { return; } finally { for (const c of chips) c.classList.remove('loading'); }
   if (wantShape === k && !playing && role !== 'guest' && world.shapeKey !== k) buildWorld(k);
   else if (wantShape === k) markShape(world.shapeKey);
 }
 
 try { await loadWorld(shapeKey); } catch { shapeKey = 'orb'; }
 buildWorld(shapeKey);
-markShape(shapeKey, false); stripNav();
+// start on the middle copy (layout must exist first)
+strip.scrollLeft = setWidth() * MID;
+markShape(shapeKey, false);
 window.__lp = { game, world, view };
 
 function start() {
